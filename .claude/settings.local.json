@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(git -C /Users/harshbajpai/Desktop/Projects/aztec-projects/aztec-packages tag)",
+      "WebFetch(domain:github.com)",
+      "Bash(aztec:*)",
+      "Bash(nargo:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebSearch",
+      "Bash(npx aztec compile:*)",
+      "Bash(/Users/harshbajpai/.aztec/bin/aztec compile:*)",
+      "Bash(/Users/harshbajpai/.aztec/bin/aztec codegen:*)",
+      "Bash(npm test:*)"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "hash_escrow-HashEscrow.json": {
+    "contractName": "HashEscrow",
+    "hash": "7c686cc07ccabbeb1b0e3ef6df2323e8518410be6f4c928e9ae6d88822cf7632"
+  },
+  "hash_verifier-HashVerifier.json": {
+    "contractName": "HashVerifier",
+    "hash": "f3355e56f1b85af75d10566dabeb99dd77cf0e9eaa89417fea12a0b71cdbc56c"
+  }
+}
