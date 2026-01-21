@@ -14,5 +14,10 @@ contract DeployScript is Script {
         console.log("BridgedUSDC deployed at:", address(token));
 
         vm.stopBroadcast();
+
+        // Write deployment address to file for server to pick up
+        string memory deploymentInfo = vm.toString(address(token));
+        vm.writeFile("../evm-deployment.json", string.concat('{"address":"', deploymentInfo, '"}'));
+        console.log("Deployment info written to evm-deployment.json");
     }
 }

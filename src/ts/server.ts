@@ -1,16 +1,45 @@
 import express from "express";
 import cors from "cors";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
 import { setupSandbox, getTestWallet, deployToken, mintTokensPrivate, mintTokensPublic } from "./utils.js";
 import { AztecToEvmBridge } from "./bridge.js";
 import type { TestWallet } from "@aztec/test-wallet/server";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const PORT = 3000;
 const FAUCET_AMOUNT = 1000n * 1000000n; // 1000 USDC with 6 decimals
 
+// Try to load EVM token address from deployment file if not set via env
+function getEvmTokenAddress(): string | undefined {
+  if (process.env.EVM_TOKEN_ADDRESS) {
+    return process.env.EVM_TOKEN_ADDRESS;
+  }
+
+  // Try to read from deployment file
+  const deploymentPath = path.join(__dirname, "../../evm-deployment.json");
+  try {
+    if (fs.existsSync(deploymentPath)) {
+      const data = JSON.parse(fs.readFileSync(deploymentPath, "utf-8"));
+      if (data.address) {
+        console.log(`[Config] Loaded EVM token address from evm-deployment.json: ${data.address}`);
+        return data.address;
+      }
+    }
+  } catch (error) {
+    console.log("[Config] Could not read evm-deployment.json:", error);
+  }
+
+  return undefined;
+}
+
 // Environment variables for bridge
-const EVM_TOKEN_ADDRESS = process.env.EVM_TOKEN_ADDRESS;
+const EVM_TOKEN_ADDRESS = getEvmTokenAddress();
 const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"; // Default Anvil account 0
 
 let wallet: TestWallet;
