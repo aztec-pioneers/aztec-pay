@@ -120,6 +120,50 @@ app.post("/api/balance", async (req, res) => {
   }
 });
 
+// Create payment link - generates ephemeral account and mints tokens
+app.post("/api/payment-link", async (req, res) => {
+  if (!isInitialized) {
+    return res.status(503).json({ error: "Server is still initializing, please wait..." });
+  }
+
+  try {
+    const { amount, message } = req.body;
+
+    // Validate amount (0 < amount <= 100)
+    if (!amount || amount <= 0 || amount > 100) {
+      return res.status(400).json({ error: "Amount must be between 0 and 100 USDC" });
+    }
+
+    console.log(`Creating payment link for ${amount} USDC...`);
+
+    // Create ephemeral account
+    const secret = Fr.random();
+    const salt = Fr.random();
+    const account = await wallet.createSchnorrAccount(secret, salt);
+
+    console.log(`Ephemeral account created: ${account.address.toString()}`);
+
+    // Mint tokens (amount * 10^6 for 6 decimals)
+    const mintAmount = BigInt(Math.floor(amount * 1000000));
+    await mintTokensPrivate(token, minterAddress, account.address, mintAmount);
+
+    console.log(`Minted ${amount} USDC to ephemeral account`);
+
+    res.json({
+      secret: secret.toString(),
+      salt: salt.toString(),
+      address: account.address.toString(),
+      amount: amount.toString(),
+      message: message || "",
+      tokenAddress: token.address.toString()
+    });
+  } catch (error) {
+    console.error("Error creating payment link:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: `Failed to create payment link: ${errorMessage}` });
+  }
+});
+
 // Health check and config
 app.get("/api/health", (_req, res) => {
   res.json({
