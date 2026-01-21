@@ -71,6 +71,18 @@ export async function mintTokensPrivate(
 }
 
 /**
+ * Mint tokens to an address (public balance)
+ */
+export async function mintTokensPublic(
+  token: TokenContract,
+  from: AztecAddress,
+  to: AztecAddress,
+  amount: bigint
+): Promise<void> {
+  await token.methods.mint_to_public(to, amount).send({ from }).wait();
+}
+
+/**
  * Get private balance of an address
  */
 export async function getPrivateBalance(
@@ -79,6 +91,18 @@ export async function getPrivateBalance(
   from: AztecAddress
 ): Promise<bigint> {
   return await token.methods.balance_of_private(address).simulate({ from });
+}
+
+/**
+ * Transfer tokens privately from one address to another
+ */
+export async function transferPrivate(
+  token: TokenContract,
+  from: AztecAddress,
+  to: AztecAddress,
+  amount: bigint
+): Promise<void> {
+  await token.methods.transfer_private_to_private(from, to, amount, 0n).send({ from }).wait();
 }
 
 export { Fr, AztecAddress, TestWallet, TokenContract };

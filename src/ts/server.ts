@@ -1,9 +1,8 @@
 import express from "express";
 import cors from "cors";
-import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
-import { setupSandbox, getTestWallet, deployToken, mintTokensPrivate, getPrivateBalance } from "./utils.js";
+import { setupSandbox, getTestWallet, deployToken, mintTokensPrivate, mintTokensPublic } from "./utils.js";
 import type { TestWallet } from "@aztec/test-wallet/server";
 
 const PORT = 3000;
@@ -35,34 +34,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Generate a new Aztec account
-app.post("/api/account", async (_req, res) => {
-  if (!isInitialized) {
-    return res.status(503).json({ error: "Server is still initializing, please wait..." });
-  }
-
-  try {
-    console.log("Creating new account...");
-    const secret = Fr.random();
-    const salt = Fr.random();
-    console.log("Generated secret and salt");
-
-    const account = await wallet.createSchnorrAccount(secret, salt);
-    console.log("Account created:", account);
-
-    res.json({
-      address: account.address.toString(),
-      secret: secret.toString(),
-      salt: salt.toString(),
-    });
-  } catch (error) {
-    console.error("Error creating account:", error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: `Failed to create account: ${errorMessage}` });
-  }
-});
-
-// Mint USDC to an address (faucet)
+// Faucet - mint USDC to any address (server's only job)
 app.post("/api/faucet", async (req, res) => {
   if (!isInitialized) {
     return res.status(503).json({ error: "Server is still initializing, please wait..." });
@@ -76,8 +48,14 @@ app.post("/api/faucet", async (req, res) => {
 
     const recipient = AztecAddress.fromString(address);
 
-    console.log(`Minting ${FAUCET_AMOUNT} USDC to ${address}...`);
-    await mintTokensPrivate(token, minterAddress, recipient, FAUCET_AMOUNT);
+    // Register the recipient so the server's PXE can send to them
+    console.log(`[Faucet] Registering recipient ${address}...`);
+    await wallet.registerSender(recipient);
+
+    // Using public mint for now to debug - private note discovery seems broken
+    console.log(`[Faucet] Minting 1000 USDC (PUBLIC) to ${address}...`);
+    await mintTokensPublic(token, minterAddress, recipient, FAUCET_AMOUNT);
+    console.log(`[Faucet] Mint complete to ${address}`);
 
     res.json({
       success: true,
@@ -90,81 +68,7 @@ app.post("/api/faucet", async (req, res) => {
   }
 });
 
-// Query private balance (user sends credentials, server acts as PXE)
-app.post("/api/balance", async (req, res) => {
-  if (!isInitialized) {
-    return res.status(503).json({ error: "Server is still initializing" });
-  }
-
-  try {
-    const { secret, salt } = req.body;
-    if (!secret || !salt) {
-      return res.status(400).json({ error: "Secret and salt are required" });
-    }
-
-    // Recreate user's account from their credentials
-    const account = await wallet.createSchnorrAccount(
-      Fr.fromString(secret),
-      Fr.fromString(salt)
-    );
-
-    // Query balance as the user
-    const balance = await getPrivateBalance(token, account.address, account.address);
-    const formattedBalance = (balance / 1000000n).toString();
-
-    res.json({ balance: formattedBalance });
-  } catch (error) {
-    console.error("Error getting balance:", error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: `Failed to get balance: ${errorMessage}` });
-  }
-});
-
-// Create payment link - generates ephemeral account and mints tokens
-app.post("/api/payment-link", async (req, res) => {
-  if (!isInitialized) {
-    return res.status(503).json({ error: "Server is still initializing, please wait..." });
-  }
-
-  try {
-    const { amount, message } = req.body;
-
-    // Validate amount (0 < amount <= 100)
-    if (!amount || amount <= 0 || amount > 100) {
-      return res.status(400).json({ error: "Amount must be between 0 and 100 USDC" });
-    }
-
-    console.log(`Creating payment link for ${amount} USDC...`);
-
-    // Create ephemeral account
-    const secret = Fr.random();
-    const salt = Fr.random();
-    const account = await wallet.createSchnorrAccount(secret, salt);
-
-    console.log(`Ephemeral account created: ${account.address.toString()}`);
-
-    // Mint tokens (amount * 10^6 for 6 decimals)
-    const mintAmount = BigInt(Math.floor(amount * 1000000));
-    await mintTokensPrivate(token, minterAddress, account.address, mintAmount);
-
-    console.log(`Minted ${amount} USDC to ephemeral account`);
-
-    res.json({
-      secret: secret.toString(),
-      salt: salt.toString(),
-      address: account.address.toString(),
-      amount: amount.toString(),
-      message: message || "",
-      tokenAddress: token.address.toString()
-    });
-  } catch (error) {
-    console.error("Error creating payment link:", error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: `Failed to create payment link: ${errorMessage}` });
-  }
-});
-
-// Health check and config
+// Health check and config - returns token address for browser to use
 app.get("/api/health", (_req, res) => {
   res.json({
     status: isInitialized ? "ok" : "initializing",
@@ -172,14 +76,15 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-// Start server immediately, initialize in background
+// Start server
 app.listen(PORT, () => {
-  console.log(`Faucet server running at http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
   console.log("Initializing Aztec connection...");
 
   initialize()
     .then(() => {
       console.log("Server fully initialized and ready!");
+      console.log("Server only handles faucet requests. All other operations happen in browser.");
     })
     .catch((err) => {
       console.error("Failed to initialize server:", err);

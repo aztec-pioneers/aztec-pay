@@ -26,3 +26,6 @@ Thumbs.db
 
 # Test coverage
 coverage/
+
+# tmp directory
+tmp

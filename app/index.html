@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f5f7" />
+    <title>AztecPay - Private Payments</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+      <h1 class="logo">Aztec<span>Pay</span></h1>
+      <p class="tagline">Private payments, simplified</p>
+      <div class="loader">
+        <div class="spinner"></div>
+        <p id="status-text" class="loader-text">Initializing...</p>
+      </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="main-app" class="main-app" style="display: none;">
+      <header class="header">
+        <div class="header-logo">
+          <div class="logo-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+          </div>
+          <span class="logo-text">Aztec<span>Pay</span></span>
+        </div>
+        <div class="balance-section">
+          <span id="balance-display" class="balance-amount">0 USDC</span>
+          <button id="faucet-btn" class="faucet-btn" title="Get test USDC from faucet">+</button>
+        </div>
+      </header>
+
+      <main class="container">
+        <!-- Create Payment Link View -->
+        <div id="create-view" class="card">
+          <div class="card-content">
+            <h2 class="card-title">Create a payment link</h2>
+            <p class="card-subtitle">Enter the details below to generate your link</p>
+
+            <div class="form-group">
+              <label class="form-label" for="amount-input">Amount</label>
+              <div class="input-with-suffix">
+                <input
+                  id="amount-input"
+                  type="number"
+                  class="form-input"
+                  placeholder="0.00"
+                  min="0.01"
+                  step="0.01"
+                />
+                <span class="input-suffix">USDC</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="message-input">Message (optional)</label>
+              <textarea
+                id="message-input"
+                class="form-textarea"
+                placeholder="Add a note for the recipient..."
+                rows="3"
+              ></textarea>
+            </div>
+
+            <div class="tip-box">
+              <span class="tip-icon">💡</span>
+              <span class="tip-text">All operations run in your browser - fully private!</span>
+            </div>
+
+            <div id="error-message" class="error-message" style="display: none;"></div>
+
+            <button id="generate-btn" class="btn btn-primary">
+              Generate Payment Link
+            </button>
+          </div>
+        </div>
+
+        <!-- Success View -->
+        <div id="success-view" class="card success-card" style="display: none;">
+          <div class="card-content">
+            <div class="success-icon-wrapper">
+              <div class="success-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+
+            <h2 class="success-title">Payment link created!</h2>
+            <p class="success-subtitle">Share this link to send <strong><span id="success-amount">0.00</span> USDC</strong></p>
+
+            <div class="link-box">
+              <input
+                id="generated-link"
+                type="text"
+                class="link-input"
+                readonly
+              />
+              <button id="copy-btn" class="btn-copy">Copy</button>
+            </div>
+
+            <button id="new-link-btn" class="btn btn-secondary">
+              Create another link
+            </button>
+          </div>
+        </div>
+
+        <!-- Feature Badges -->
+        <div class="feature-badges">
+          <div class="feature-badge">
+            <span class="feature-icon">🔒</span>
+            <span class="feature-text">Secure</span>
+          </div>
+          <div class="feature-badge">
+            <span class="feature-icon">⚡</span>
+            <span class="feature-text">Instant</span>
+          </div>
+          <div class="feature-badge">
+            <span class="feature-icon">🖥️</span>
+            <span class="feature-text">Browser-native</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,7 +1,21 @@
 <script lang="ts">
   import "./app.css";
+  import {
+    initializeAztec,
+    isAztecReady,
+    createAccount,
+    getBalance,
+    transferPrivate,
+    generateRandomSecret,
+  } from "./aztec-client";
 
   type View = 'create' | 'success';
+
+  interface AccountCredentials {
+    secret: string;
+    salt: string;
+    address: string;
+  }
 
   let amount = $state<number | null>(null);
   let message = $state("");
@@ -9,32 +23,168 @@
   let generatedLink = $state("");
   let currentView = $state<View>('create');
   let serverReady = $state(false);
+  let aztecReady = $state(false);
   let errorMessage = $state("");
   let copySuccess = $state(false);
+  let initStatus = $state("Connecting to server...");
 
-  // Check server health on mount
+  // User account state
+  let userAccount = $state<AccountCredentials | null>(null);
+  let balance = $state<string>("0");
+  let isFauceting = $state(false);
+  let isLoadingBalance = $state(false);
+  let tokenAddress = $state<string | null>(null);
+
+  const STORAGE_KEY = "aztecAccount";
+
+  // Initialize on mount
   $effect(() => {
-    checkServerHealth();
+    initialize();
   });
 
-  async function checkServerHealth() {
+  async function initialize() {
+    try {
+      // Step 1: Check server health to get token address
+      initStatus = "Checking server...";
+      const healthData = await checkServerHealth();
+
+      if (!healthData) {
+        return; // Will retry via setTimeout
+      }
+
+      tokenAddress = healthData.tokenAddress;
+      serverReady = true;
+
+      // Step 2: Initialize Aztec client in browser
+      initStatus = "Initializing Aztec client...";
+      await initializeAztec();
+      aztecReady = true;
+
+      // Step 3: Load or create user account
+      initStatus = "Setting up account...";
+      await initializeAccount();
+
+      initStatus = "Ready!";
+    } catch (error) {
+      console.error("Initialization error:", error);
+      initStatus = `Error: ${error instanceof Error ? error.message : String(error)}`;
+      setTimeout(initialize, 3000);
+    }
+  }
+
+  async function checkServerHealth(): Promise<{ tokenAddress: string } | null> {
     try {
       const response = await fetch("/api/health");
       const data = await response.json();
 
-      if (data.status === "ok") {
-        serverReady = true;
+      if (data.status === "ok" && data.tokenAddress) {
+        return { tokenAddress: data.tokenAddress };
       } else if (data.status === "initializing") {
-        setTimeout(checkServerHealth, 2000);
+        initStatus = "Server is deploying contracts...";
+        setTimeout(initialize, 2000);
+        return null;
       }
+      return null;
     } catch {
-      setTimeout(checkServerHealth, 3000);
+      initStatus = "Waiting for server...";
+      setTimeout(initialize, 3000);
+      return null;
+    }
+  }
+
+  async function initializeAccount() {
+    // Check localStorage for existing account
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Re-register account with browser's Aztec client
+      const account = await createAccount(parsed.secret, parsed.salt);
+      userAccount = {
+        secret: parsed.secret,
+        salt: parsed.salt,
+        address: account.address,
+      };
+      await refreshBalance();
+    } else {
+      await createNewAccount();
+    }
+  }
+
+  async function createNewAccount() {
+    try {
+      // Generate secrets and create account in browser
+      const secret = generateRandomSecret();
+      const salt = generateRandomSecret();
+
+      const account = await createAccount(secret, salt);
+
+      userAccount = { secret, salt, address: account.address };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userAccount));
+      await refreshBalance();
+    } catch (error) {
+      console.error("Failed to create account:", error);
+      errorMessage = `Failed to create account: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  async function refreshBalance() {
+    if (!userAccount || !tokenAddress) return;
+
+    isLoadingBalance = true;
+    try {
+      // Query balance directly from browser
+      const rawBalance = await getBalance(tokenAddress, userAccount.address);
+      const formattedBalance = (rawBalance / 1000000n).toString();
+      balance = formattedBalance;
+    } catch (error) {
+      console.error("Failed to fetch balance:", error);
+    } finally {
+      isLoadingBalance = false;
+    }
+  }
+
+  async function faucet() {
+    if (!userAccount || isFauceting) return;
+
+    isFauceting = true;
+    try {
+      // Only API call - server mints tokens to our address
+      const response = await fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: userAccount.address }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Faucet failed");
+      }
+
+      // Refresh balance from browser
+      await refreshBalance();
+    } catch (error) {
+      console.error("Faucet failed:", error);
+      errorMessage = `Faucet failed: ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      isFauceting = false;
     }
   }
 
   async function generatePaymentLink() {
-    if (!amount || amount <= 0 || amount > 100) {
-      errorMessage = "Please enter an amount between 0 and 100 USDC";
+    if (!amount || amount <= 0) {
+      errorMessage = "Please enter an amount greater than 0";
+      return;
+    }
+
+    if (!userAccount || !tokenAddress) {
+      errorMessage = "Account not initialized";
+      return;
+    }
+
+    // Check if user has sufficient balance
+    const currentBalance = parseFloat(balance);
+    if (amount > currentBalance) {
+      errorMessage = `Insufficient balance. You have ${balance} USDC`;
       return;
     }
 
@@ -42,30 +192,38 @@
     errorMessage = "";
 
     try {
-      const response = await fetch("/api/payment-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, message }),
-      });
+      // Step 1: Generate ephemeral account credentials in browser
+      const ephemeralSecret = generateRandomSecret();
+      const ephemeralSalt = generateRandomSecret();
 
-      const data = await response.json();
+      // Step 2: Create ephemeral account in browser
+      const ephemeralAccount = await createAccount(ephemeralSecret, ephemeralSalt);
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to generate payment link");
-      }
+      // Step 3: Transfer from user account to ephemeral account (browser-direct)
+      const transferAmount = BigInt(Math.floor(amount * 1000000));
+      await transferPrivate(
+        tokenAddress,
+        userAccount.secret,
+        userAccount.salt,
+        ephemeralAccount.address,
+        transferAmount
+      );
 
       // Encode data as base64
       const linkData = btoa(JSON.stringify({
-        secret: data.secret,
-        salt: data.salt,
-        amount: data.amount,
-        message: data.message,
-        tokenAddress: data.tokenAddress
+        secret: ephemeralSecret,
+        salt: ephemeralSalt,
+        amount: amount.toString(),
+        message: message || "",
+        tokenAddress: tokenAddress
       }));
 
       // Create the payment link
       generatedLink = `${window.location.origin}/claim?data=${linkData}`;
       currentView = 'success';
+
+      // Refresh balance after transfer
+      await refreshBalance();
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : "Something went wrong";
     } finally {
@@ -100,7 +258,7 @@
   }
 </script>
 
-{#if !serverReady}
+{#if !serverReady || !aztecReady}
   <!-- Loading/Initialization Screen -->
   <div class="loading-screen">
     <h1 class="logo">Aztec<span>Pay</span></h1>
@@ -108,7 +266,7 @@
 
     <div class="loader">
       <div class="spinner"></div>
-      <p class="loader-text">Initializing your payment experience<span class="loading-dots"></span></p>
+      <p class="loader-text">{initStatus}<span class="loading-dots"></span></p>
     </div>
   </div>
 {:else}
@@ -123,6 +281,27 @@
           </svg>
         </div>
         <span class="logo-text">Aztec<span>Pay</span></span>
+      </div>
+      <div class="balance-section">
+        <span class="balance-amount">
+          {#if isLoadingBalance}
+            <span class="balance-loading">...</span>
+          {:else}
+            {balance} USDC
+          {/if}
+        </span>
+        <button
+          class="faucet-btn"
+          onclick={faucet}
+          disabled={isFauceting}
+          title="Get test USDC from faucet"
+        >
+          {#if isFauceting}
+            <span class="spinner faucet-spinner"></span>
+          {:else}
+            +
+          {/if}
+        </button>
       </div>
     </header>
 
@@ -142,7 +321,6 @@
                 class="form-input"
                 placeholder="0.00"
                 min="0.01"
-                max="100"
                 step="0.01"
                 bind:value={amount}
               />
@@ -168,7 +346,7 @@
 
           <div class="tip-box">
             <span class="tip-icon">💡</span>
-            <span class="tip-text">Tip: Recipients can claim on any blockchain</span>
+            <span class="tip-text">Tip: All operations run in your browser - fully private!</span>
           </div>
 
           {#if errorMessage}
@@ -204,8 +382,8 @@
           <span class="feature-text">Instant</span>
         </div>
         <div class="feature-badge">
-          <span class="feature-icon">🌐</span>
-          <span class="feature-text">Any blockchain</span>
+          <span class="feature-icon">🖥️</span>
+          <span class="feature-text">Browser-native</span>
         </div>
       </div>
 

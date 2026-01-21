@@ -15,7 +15,20 @@
       "Bash(/Users/harshbajpai/.aztec/bin/aztec codegen:*)",
       "Bash(npm test:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx svelte-check:*)"
+      "Bash(npx svelte-check:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npm search:*)",
+      "Bash(npm install:*)",
+      "Bash(pkill:*)",
+      "Bash(grep:*)",
+      "Bash(yarn install)",
+      "Bash(curl:*)",
+      "Bash(yarn install:*)",
+      "Bash(lsof:*)",
+      "Bash(yarn build:*)",
+      "Bash(find:*)"
     ]
   }
 }
