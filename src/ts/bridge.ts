@@ -1,6 +1,6 @@
 import { createPublicClient, createWalletClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { foundry } from "viem/chains";
+import { baseSepolia } from "viem/chains";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import type { TestWallet } from "@aztec/test-wallet/server";
@@ -10,6 +10,7 @@ import type { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/T
 interface BridgeSession {
   evmAddress: string;
   aztecAddress: AztecAddress;
+  senderAddress?: AztecAddress; // The address that will send tokens to this deposit address
   secret: Fr;
   salt: Fr;
   createdAt: number;
@@ -31,18 +32,21 @@ export class AztecToEvmBridge {
   private token: TokenContract;
   private evmTokenAddress: `0x${string}`;
   private evmPrivateKey: `0x${string}`;
+  private evmRpcUrl: string;
   private pollInterval: NodeJS.Timeout | null = null;
 
   constructor(
     wallet: TestWallet,
     token: TokenContract,
     evmTokenAddress: string,
-    evmPrivateKey: string
+    evmPrivateKey: string,
+    evmRpcUrl: string = "https://sepolia.base.org"
   ) {
     this.wallet = wallet;
     this.token = token;
     this.evmTokenAddress = evmTokenAddress as `0x${string}`;
     this.evmPrivateKey = evmPrivateKey as `0x${string}`;
+    this.evmRpcUrl = evmRpcUrl;
   }
 
   /**
@@ -66,8 +70,12 @@ export class AztecToEvmBridge {
   /**
    * Create a new bridge session
    * Returns the Aztec address where user should send tokens
+   * @param evmAddress - The EVM address to receive minted tokens
+   * @param senderAddress - CRITICAL: The Aztec address that will send tokens to the deposit address.
+   *                        Required for note discovery - the bridge PXE must register this sender
+   *                        to discover the private notes.
    */
-  async createSession(evmAddress: string): Promise<{
+  async createSession(evmAddress: string, senderAddress?: string): Promise<{
     aztecAddress: string;
     expiresAt: number;
   }> {
@@ -79,10 +87,22 @@ export class AztecToEvmBridge {
     const accountManager = await this.createEphemeralAccount(secret, salt);
     const aztecAddress = accountManager.address;
 
+    // CRITICAL: Register the sender address so the bridge can discover notes sent to the deposit address
+    // Without this, the bridge PXE cannot see the private notes from the sender
+    let senderAddr: AztecAddress | undefined;
+    if (senderAddress) {
+      senderAddr = AztecAddress.fromString(senderAddress);
+      console.log(`[Bridge] Registering sender ${senderAddress} for note discovery...`);
+      await this.wallet.registerSender(senderAddr);
+    } else {
+      console.warn(`[Bridge] WARNING: No sender address provided - note discovery may fail!`);
+    }
+
     const now = Date.now();
     const session: BridgeSession = {
       evmAddress,
       aztecAddress,
+      senderAddress: senderAddr,
       secret,
       salt,
       createdAt: now,
@@ -94,6 +114,9 @@ export class AztecToEvmBridge {
 
     console.log(`[Bridge] Created session for EVM ${evmAddress}`);
     console.log(`[Bridge] Aztec deposit address: ${aztecAddress.toString()}`);
+    if (senderAddr) {
+      console.log(`[Bridge] Sender address (for note discovery): ${senderAddr.toString()}`);
+    }
     console.log(`[Bridge] Expires at: ${new Date(session.expiresAt).toISOString()}`);
 
     return {
@@ -186,15 +209,15 @@ export class AztecToEvmBridge {
   }
 
   /**
-   * Mint tokens on EVM (Anvil)
+   * Mint tokens on EVM (Base Sepolia)
    */
   private async mintOnEvm(to: string, amount: bigint) {
     const account = privateKeyToAccount(this.evmPrivateKey);
 
     const walletClient = createWalletClient({
       account,
-      chain: foundry,
-      transport: http("http://127.0.0.1:8545"),
+      chain: baseSepolia,
+      transport: http(this.evmRpcUrl),
     });
 
     const hash = await walletClient.writeContract({
@@ -205,11 +228,12 @@ export class AztecToEvmBridge {
     });
 
     console.log(`[Bridge] EVM mint tx: ${hash}`);
+    console.log(`[Bridge] View on BaseScan: https://sepolia.basescan.org/tx/${hash}`);
 
     // Wait for confirmation
     const publicClient = createPublicClient({
-      chain: foundry,
-      transport: http("http://127.0.0.1:8545"),
+      chain: baseSepolia,
+      transport: http(this.evmRpcUrl),
     });
 
     await publicClient.waitForTransactionReceipt({ hash });
@@ -232,26 +256,26 @@ export class AztecToEvmBridge {
 }
 
 /**
- * Deploy BridgedUSDC contract to Anvil
+ * Deploy BridgedUSDC contract to Base Sepolia
  */
-export async function deployBridgedUSDC(privateKey: string): Promise<string> {
+export async function deployBridgedUSDC(privateKey: string, rpcUrl: string = "https://sepolia.base.org"): Promise<string> {
   const account = privateKeyToAccount(privateKey as `0x${string}`);
 
   const walletClient = createWalletClient({
     account,
-    chain: foundry,
-    transport: http("http://127.0.0.1:8545"),
+    chain: baseSepolia,
+    transport: http(rpcUrl),
   });
 
   const publicClient = createPublicClient({
-    chain: foundry,
-    transport: http("http://127.0.0.1:8545"),
+    chain: baseSepolia,
+    transport: http(rpcUrl),
   });
 
   // BridgedUSDC bytecode - we'll use forge to get this
   // For now, deploy using forge script and pass the address
   console.log("[Bridge] Note: Deploy BridgedUSDC using forge script first");
-  console.log("[Bridge] Run: cd evm && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key <key>");
+  console.log("[Bridge] Run: yarn evm:deploy");
 
   throw new Error("BridgedUSDC must be deployed via forge script first. Set EVM_TOKEN_ADDRESS env var.");
 }

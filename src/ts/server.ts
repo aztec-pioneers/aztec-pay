@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import fs from "fs";
@@ -40,7 +41,8 @@ function getEvmTokenAddress(): string | undefined {
 
 // Environment variables for bridge
 const EVM_TOKEN_ADDRESS = getEvmTokenAddress();
-const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"; // Default Anvil account 0
+const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY;
+const EVM_RPC_URL = process.env.EVM_RPC_URL || "https://sepolia.base.org";
 
 let wallet: TestWallet;
 let token: TokenContract;
@@ -63,14 +65,15 @@ async function initialize() {
   console.log(`Server initialized with token at ${token.address.toString()}`);
   console.log(`Minter address: ${minterAddress.toString()}`);
 
-  // Initialize bridge if EVM token address is set
-  if (EVM_TOKEN_ADDRESS) {
+  // Initialize bridge if EVM token address and private key are set
+  if (EVM_TOKEN_ADDRESS && EVM_PRIVATE_KEY) {
     console.log("Initializing Aztec -> EVM bridge...");
-    bridge = new AztecToEvmBridge(wallet, token, EVM_TOKEN_ADDRESS, EVM_PRIVATE_KEY);
+    console.log(`  EVM RPC: ${EVM_RPC_URL}`);
+    bridge = new AztecToEvmBridge(wallet, token, EVM_TOKEN_ADDRESS, EVM_PRIVATE_KEY, EVM_RPC_URL);
     bridge.start();
     console.log(`Bridge initialized with EVM token at ${EVM_TOKEN_ADDRESS}`);
   } else {
-    console.log("Bridge disabled - set EVM_TOKEN_ADDRESS to enable");
+    console.log("Bridge disabled - set EVM_TOKEN_ADDRESS and EVM_PRIVATE_KEY to enable");
   }
 
   isInitialized = true;
@@ -126,7 +129,7 @@ app.post("/api/bridge/initiate", async (req, res) => {
   }
 
   try {
-    const { evmAddress } = req.body;
+    const { evmAddress, senderAddress } = req.body;
     if (!evmAddress) {
       return res.status(400).json({ error: "evmAddress is required" });
     }
@@ -136,8 +139,17 @@ app.post("/api/bridge/initiate", async (req, res) => {
       return res.status(400).json({ error: "Invalid EVM address format" });
     }
 
+    // Warn if sender address is not provided (required for note discovery)
+    if (!senderAddress) {
+      console.warn(`[Bridge] WARNING: No senderAddress provided - note discovery may fail!`);
+    }
+
     console.log(`[Bridge] Initiating bridge for EVM address ${evmAddress}`);
-    const session = await bridge.createSession(evmAddress);
+    if (senderAddress) {
+      console.log(`[Bridge] Sender address (for note discovery): ${senderAddress}`);
+    }
+
+    const session = await bridge.createSession(evmAddress, senderAddress);
 
     res.json({
       success: true,

@@ -12,7 +12,7 @@
     "test:bridge": "tsx src/ts/test-bridge.ts",
     "anvil": "anvil",
     "evm:build": "cd evm && forge build",
-    "evm:deploy": "cd evm && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --ffi"
+    "evm:deploy": "dotenv -- bash -c 'cd evm && forge script script/Deploy.s.sol --rpc-url $EVM_RPC_URL --broadcast --private-key $EVM_PRIVATE_KEY --ffi'"
   },
   "dependencies": {
     "@aztec/accounts": "3.0.0-devnet.20251212",
@@ -28,6 +28,7 @@
     "@aztec/wallet-sdk": "3.0.0-devnet.20251212",
     "@defi-wonderland/aztec-standards": "github:defi-wonderland/aztec-standards#dev",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "viem": "^2.44.4"
   },
@@ -38,6 +39,7 @@
     "assert": "^2.1.0",
     "buffer": "^6.0.3",
     "css-loader": "^6.10.0",
+    "dotenv-cli": "^8.0.0",
     "dotenv-webpack": "^8.0.1",
     "html-webpack-plugin": "^5.6.0",
     "style-loader": "^3.3.4",

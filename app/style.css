@@ -474,3 +474,262 @@ body {
 .btn-copy:hover {
   background: var(--accent-hover);
 }
+
+/* ============================================
+   CLAIM PAGE STYLES
+   ============================================ */
+
+/* Network Badge */
+.network-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  padding: 8px 14px;
+  border-radius: 20px;
+}
+
+.network-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--success);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.network-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Payment Header */
+.payment-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.payment-icon {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, var(--success), #2ecc71);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.payment-icon svg {
+  width: 28px;
+  height: 28px;
+  color: white;
+}
+
+.payment-info {
+  flex: 1;
+}
+
+.payment-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.payment-amount {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* Message Box */
+.message-box {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.message-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.message-text {
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* Divider */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 24px 0;
+}
+
+/* Full Width Input */
+.form-input.full-width {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 1rem;
+  font-family: "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-input.full-width:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+}
+
+.form-hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+/* Info Box */
+.info-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #e8f4fd;
+  border-radius: 12px;
+  margin-top: 16px;
+}
+
+.info-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.info-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.info-text {
+  font-size: 0.8125rem;
+  color: #1a5276;
+  line-height: 1.4;
+}
+
+/* Processing View */
+.center-content {
+  text-align: center;
+  padding: 48px 32px;
+}
+
+.processing-spinner {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.spinner.large {
+  width: 48px;
+  height: 48px;
+  border-width: 4px;
+}
+
+.processing-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.processing-status {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+
+/* Transaction Box */
+.tx-box {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.tx-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.tx-hash {
+  font-size: 0.9375rem;
+  font-family: "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.tx-hash:hover {
+  text-decoration: underline;
+}
+
+/* Error View */
+.error-card .card-content {
+  text-align: center;
+}
+
+.error-icon-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.error-icon {
+  width: 64px;
+  height: 64px;
+  background: var(--error);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.error-icon svg {
+  width: 32px;
+  height: 32px;
+  color: white;
+}
+
+.error-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.error-detail {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}

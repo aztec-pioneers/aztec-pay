@@ -142,6 +142,20 @@ export class EmbeddedWallet extends BaseWallet {
     return this.aztecNode.getContract(address);
   }
 
+  /**
+   * Get current block number from the node
+   */
+  async getBlockNumber(): Promise<number> {
+    return this.aztecNode.getBlockNumber();
+  }
+
+  /**
+   * Get PXE sync status
+   */
+  async getSyncStatus() {
+    return this.pxe.getSyncStatus();
+  }
+
   private async registerAccount(accountManager: AccountManager) {
     const instance = await accountManager.getInstance();
     const artifact = await accountManager.getAccountContract().getContractArtifact();
@@ -156,8 +170,9 @@ export class EmbeddedWallet extends BaseWallet {
   /**
    * Create a new Schnorr account with given secret and salt
    * This is used for creating ephemeral accounts for payment links
+   * @param deploy - If true, deploys the account contract (required for sending transactions)
    */
-  async createSchnorrAccount(secret: Fr, salt: Fr): Promise<{ address: AztecAddress }> {
+  async createSchnorrAccount(secret: Fr, salt: Fr, deploy: boolean = false): Promise<{ address: AztecAddress }> {
     // Generate a signing key from the secret
     const signingKey = GrumpkinScalar.fromBuffer(secret.toBuffer());
 
@@ -173,6 +188,39 @@ export class EmbeddedWallet extends BaseWallet {
       accountManager.address.toString(),
       await accountManager.getAccount()
     );
+
+    // Deploy if requested (needed for the account to send transactions)
+    if (deploy) {
+      // First check if the account is already deployed
+      const existingContract = await this.aztecNode.getContract(accountManager.address);
+
+      if (existingContract) {
+        logger.info('Ephemeral account already deployed:', accountManager.address.toString());
+      } else {
+        logger.info('Deploying ephemeral account contract...');
+        try {
+          const sponsoredFPC = await EmbeddedWallet.#getSponsoredPFCContract();
+          const deployMethod = await accountManager.getDeployMethod();
+          await deployMethod
+            .send({
+              from: AztecAddress.ZERO, // Signerless deployment
+              fee: {
+                paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.instance.address),
+              },
+            })
+            .wait({ timeout: 120 });
+          logger.info('Ephemeral account deployed:', accountManager.address.toString());
+        } catch (deployError) {
+          // Check if it failed because it's already deployed (nullifier exists)
+          const alreadyDeployed = await this.aztecNode.getContract(accountManager.address);
+          if (alreadyDeployed) {
+            logger.info('Account was already deployed (caught during deploy):', accountManager.address.toString());
+          } else {
+            throw deployError;
+          }
+        }
+      }
+    }
 
     return { address: accountManager.address };
   }

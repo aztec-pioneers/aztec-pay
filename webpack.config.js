@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 export default (_, argv) => ({
   entry: {
     main: './app/main.ts',
+    claim: './app/claim.ts',
   },
   target: 'web',
   devtool: 'source-map',
@@ -30,6 +31,14 @@ export default (_, argv) => ({
   plugins: [
     new HtmlWebpackPlugin({
       template: './app/index.html',
+      filename: 'index.html',
+      chunks: ['main'],
+      scriptLoading: 'module',
+    }),
+    new HtmlWebpackPlugin({
+      template: './app/claim.html',
+      filename: 'claim.html',
+      chunks: ['claim'],
       scriptLoading: 'module',
     }),
     new Dotenv({ path: './.env' }),
@@ -55,6 +64,12 @@ export default (_, argv) => ({
     },
     client: {
       overlay: false,
+    },
+    historyApiFallback: {
+      rewrites: [
+        { from: /^\/claim/, to: '/claim.html' },
+        { from: /./, to: '/index.html' },
+      ],
     },
     proxy: [
       {

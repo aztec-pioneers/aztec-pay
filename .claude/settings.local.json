@@ -31,7 +31,9 @@
       "Bash(find:*)",
       "Bash(forge install:*)",
       "Bash(forge build:*)",
-      "Bash(yarn add:*)"
+      "Bash(yarn add:*)",
+      "Bash(yarn test:*)",
+      "Bash(ls:*)"
     ]
   }
 }

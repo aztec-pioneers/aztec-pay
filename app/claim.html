@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f5f7" />
+    <title>Claim Payment - AztecPay</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+      <h1 class="logo">Aztec<span>Pay</span></h1>
+      <p class="tagline">Private payments, simplified</p>
+      <div class="loader">
+        <div class="spinner"></div>
+        <p id="status-text" class="loader-text">Loading payment...</p>
+      </div>
+    </div>
+
+    <!-- Main Claim App -->
+    <div id="main-app" class="main-app" style="display: none;">
+      <header class="header">
+        <div class="header-logo">
+          <div class="logo-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+          </div>
+          <span class="logo-text">Aztec<span>Pay</span></span>
+        </div>
+        <div class="network-badge">
+          <span class="network-dot"></span>
+          <span class="network-text">Base Sepolia</span>
+        </div>
+      </header>
+
+      <main class="container">
+        <!-- Claim View -->
+        <div id="claim-view" class="card">
+          <div class="card-content">
+            <div class="payment-header">
+              <div class="payment-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div class="payment-info">
+                <p class="payment-label">You've received</p>
+                <h2 id="payment-amount" class="payment-amount">0.00 USDC</h2>
+              </div>
+            </div>
+
+            <div id="message-box" class="message-box" style="display: none;">
+              <p class="message-label">Message:</p>
+              <p id="payment-message" class="message-text"></p>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="form-group">
+              <label class="form-label" for="evm-address">Your Base Sepolia Address</label>
+              <input
+                id="evm-address"
+                type="text"
+                class="form-input full-width"
+                placeholder="0x..."
+              />
+              <p class="form-hint">Enter your EVM wallet address to receive USDC on Base Sepolia</p>
+            </div>
+
+            <div id="error-message" class="error-message" style="display: none;"></div>
+
+            <button id="claim-btn" class="btn btn-primary">
+              Claim to Base Sepolia
+            </button>
+
+            <div class="info-box">
+              <span class="info-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+              <span class="info-text">This bridges private Aztec funds to Base Sepolia. The transaction will appear on BaseScan.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Processing View -->
+        <div id="processing-view" class="card" style="display: none;">
+          <div class="card-content center-content">
+            <div class="processing-spinner">
+              <div class="spinner large"></div>
+            </div>
+            <h2 class="processing-title">Processing claim...</h2>
+            <p id="processing-status" class="processing-status">Verifying payment on Aztec network</p>
+          </div>
+        </div>
+
+        <!-- Success View -->
+        <div id="success-view" class="card success-card" style="display: none;">
+          <div class="card-content">
+            <div class="success-icon-wrapper">
+              <div class="success-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+
+            <h2 class="success-title">Payment claimed!</h2>
+            <p class="success-subtitle"><strong><span id="success-amount">0.00</span> USDC</strong> sent to your wallet</p>
+
+            <div class="tx-box">
+              <p class="tx-label">Transaction Hash</p>
+              <a id="tx-link" href="#" target="_blank" class="tx-hash">View on BaseScan</a>
+            </div>
+
+            <a href="/" class="btn btn-secondary">
+              Create your own payment link
+            </a>
+          </div>
+        </div>
+
+        <!-- Error View -->
+        <div id="error-view" class="card error-card" style="display: none;">
+          <div class="card-content center-content">
+            <div class="error-icon-wrapper">
+              <div class="error-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+            </div>
+            <h2 class="error-title">Something went wrong</h2>
+            <p id="error-detail" class="error-detail">Unable to process this payment link</p>
+            <a href="/" class="btn btn-secondary">
+              Go to homepage
+            </a>
+          </div>
+        </div>
+
+        <!-- Feature Badges -->
+        <div class="feature-badges">
+          <div class="feature-badge">
+            <span class="feature-icon">🔒</span>
+            <span class="feature-text">Private</span>
+          </div>
+          <div class="feature-badge">
+            <span class="feature-icon">🌉</span>
+            <span class="feature-text">Bridged</span>
+          </div>
+          <div class="feature-badge">
+            <span class="feature-icon">⚡</span>
+            <span class="feature-text">Fast</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

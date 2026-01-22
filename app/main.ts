@@ -247,15 +247,20 @@ async function generatePaymentLink() {
       .wait({ timeout: 120 });
 
     // Step 4: Create payment link
+    // Include ephemeral address for verification and sender address for note discovery
     const linkData = btoa(
       JSON.stringify({
         secret: ephemeralSecret.toString(),
         salt: ephemeralSalt.toString(),
+        ephemeralAddress: ephemeralAccount.address.toString(),
+        senderAddress: wallet.connectedAccount.toString(), // CRITICAL: needed for claimer to discover notes
         amount: amount.toString(),
         message: message || '',
         tokenAddress: tokenAddress,
       })
     );
+    console.log('[Link] Created with ephemeral address:', ephemeralAccount.address.toString());
+    console.log('[Link] Sender address included:', wallet.connectedAccount.toString());
 
     const link = `${window.location.origin}/claim?data=${linkData}`;
 
