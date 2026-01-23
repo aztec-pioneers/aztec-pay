@@ -33,7 +33,17 @@
       "Bash(forge build:*)",
       "Bash(yarn add:*)",
       "Bash(yarn test:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker run:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker network:*)",
+      "Bash(docker builder prune:*)",
+      "Bash(docker version:*)",
+      "Bash(docker system prune:*)",
+      "Bash(docker ps:*)"
     ]
   }
 }

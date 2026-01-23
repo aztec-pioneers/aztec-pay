@@ -1,0 +1,92 @@
+services:
+  # Anvil (local Ethereum node) - uses Aztec image which includes anvil
+  anvil:
+    container_name: anvil-ethereum-node
+    profiles:
+      - local-network
+    image: aztecprotocol/aztec:3.0.0-devnet.20251212
+    ports:
+      - "8545:8545"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        anvil --host 0.0.0.0 --silent
+    restart: unless-stopped
+    networks:
+      - aztec-network
+
+  # Aztec local network node
+  aztec:
+    container_name: aztec-local-network-node
+    profiles:
+      - local-network
+    image: aztecprotocol/aztec:3.0.0-devnet.20251212
+    ports:
+      - "8080:8080"
+      - "40400:40400"
+      - "40400:40400/udp"
+    environment:
+      - LOG_LEVEL=info
+      - L1_CHAIN_ID=31337
+      - ETHEREUM_HOSTS=http://anvil:8545
+      - AZTEC_PORT=8080
+      - P2P_PORT=40400
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        node --no-warnings /usr/src/yarn-project/aztec/dest/bin/index.js start --local-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
+    depends_on:
+      - anvil
+    restart: unless-stopped
+    networks:
+      - aztec-network
+
+  # Backend API server
+  backend:
+    container_name: aztec-pay-backend
+    profiles:
+      - app
+    build:
+      context: .
+      target: backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - AZTEC_NODE_URL=http://aztec:8080
+      - EVM_TOKEN_ADDRESS=${EVM_TOKEN_ADDRESS}
+      - EVM_PRIVATE_KEY=${EVM_PRIVATE_KEY}
+      - EVM_RPC_URL=${EVM_RPC_URL:-https://sepolia.base.org}
+    depends_on:
+      aztec:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aztec-network
+
+  # Frontend served via nginx
+  frontend:
+    container_name: aztec-pay-frontend
+    profiles:
+      - app
+    build:
+      context: .
+      target: frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - aztec-network
+
+networks:
+  aztec-network:
+    driver: bridge

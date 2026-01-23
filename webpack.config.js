@@ -74,7 +74,7 @@ export default (_, argv) => ({
     proxy: [
       {
         context: ['/api'],
-        target: 'http://localhost:3000',
+        target: process.env.API_URL || 'http://localhost:3001',
         changeOrigin: true,
       },
     ],

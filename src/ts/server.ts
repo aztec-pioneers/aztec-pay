@@ -13,7 +13,7 @@ import type { TestWallet } from "@aztec/test-wallet/server";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const FAUCET_AMOUNT = 1000n * 1000000n; // 1000 USDC with 6 decimals
 
 // Try to load EVM token address from deployment file if not set via env

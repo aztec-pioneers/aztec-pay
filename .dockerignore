@@ -1,0 +1,37 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (will be passed via docker-compose)
+.env
+.env.*
+
+# Temporary files
+tmp
+*.log
+
+# EVM build artifacts
+evm/out
+evm/cache
+evm/broadcast
+
+# Test files
+*.test.ts
+*.spec.ts
+coverage
+
+# Documentation
+*.md
+!README.md

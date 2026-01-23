@@ -5,10 +5,11 @@ import { TestWallet } from "@aztec/test-wallet/server";
 import { getInitialTestAccountsData } from "@aztec/accounts/testing";
 import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
 
-const PXE_URL = "http://localhost:8080";
+// In Docker with host network mode, use localhost. Otherwise use AZTEC_NODE_URL.
+const PXE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
 
 /**
- * Connect to the local Aztec node at localhost:8080
+ * Connect to the Aztec node
  */
 export async function setupSandbox(): Promise<AztecNode> {
   const node = createAztecNodeClient(PXE_URL);

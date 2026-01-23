@@ -12,7 +12,11 @@
     "test:bridge": "tsx src/ts/test-bridge.ts",
     "anvil": "anvil",
     "evm:build": "cd evm && forge build",
-    "evm:deploy": "dotenv -- bash -c 'cd evm && forge script script/Deploy.s.sol --rpc-url $EVM_RPC_URL --broadcast --private-key $EVM_PRIVATE_KEY --ffi'"
+    "evm:deploy": "dotenv -- bash -c 'cd evm && forge script script/Deploy.s.sol --rpc-url $EVM_RPC_URL --broadcast --private-key $EVM_PRIVATE_KEY --ffi'",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
     "@aztec/accounts": "3.0.0-devnet.20251212",
