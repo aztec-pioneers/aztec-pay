@@ -33,6 +33,7 @@ const balanceDisplay = document.getElementById('balance-display')!;
 const faucetBtn = document.getElementById('faucet-btn')!;
 const amountInput = document.getElementById('amount-input') as HTMLInputElement;
 const messageInput = document.getElementById('message-input') as HTMLTextAreaElement;
+const messageCharCount = document.getElementById('message-char-count')!;
 const generateBtn = document.getElementById('generate-btn')!;
 const errorMessage = document.getElementById('error-message')!;
 
@@ -320,6 +321,11 @@ function setupEventListeners() {
   faucetBtn.addEventListener('click', faucet);
   generateBtn.addEventListener('click', generatePaymentLink);
 
+  // Update character count as user types
+  messageInput.addEventListener('input', () => {
+    messageCharCount.textContent = String(messageInput.value.length);
+  });
+
   copyBtn.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(generatedLink.value);
@@ -335,6 +341,7 @@ function setupEventListeners() {
   newLinkBtn.addEventListener('click', () => {
     amountInput.value = '';
     messageInput.value = '';
+    messageCharCount.textContent = '0';
     successView.style.display = 'none';
     createView.style.display = 'block';
     hideError();

@@ -135,6 +135,59 @@
               </button>
             </div>
 
+            <!-- Manual Setup Details -->
+            <div class="manual-setup">
+              <button id="toggle-manual-btn" class="manual-toggle">
+                <span>Add network & token manually</span>
+                <svg class="toggle-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              <div id="manual-details" class="manual-details" style="display: none;">
+                <p class="manual-hint">Copy these details to add Base Sepolia and bUSDC to your wallet:</p>
+
+                <div class="manual-section">
+                  <h4>Network Details (Base Sepolia)</h4>
+                  <div class="manual-row">
+                    <span class="manual-label">Network Name</span>
+                    <span class="manual-value">Base Sepolia</span>
+                  </div>
+                  <div class="manual-row">
+                    <span class="manual-label">RPC URL</span>
+                    <code class="manual-code">https://sepolia.base.org</code>
+                  </div>
+                  <div class="manual-row">
+                    <span class="manual-label">Chain ID</span>
+                    <code class="manual-code">84532</code>
+                  </div>
+                  <div class="manual-row">
+                    <span class="manual-label">Currency Symbol</span>
+                    <span class="manual-value">ETH</span>
+                  </div>
+                  <div class="manual-row">
+                    <span class="manual-label">Block Explorer</span>
+                    <code class="manual-code">https://sepolia.basescan.org</code>
+                  </div>
+                </div>
+
+                <div class="manual-section">
+                  <h4>Token Details (Bridged USDC)</h4>
+                  <div class="manual-row">
+                    <span class="manual-label">Contract Address</span>
+                    <code id="manual-token-address" class="manual-code copyable">Loading...</code>
+                  </div>
+                  <div class="manual-row">
+                    <span class="manual-label">Symbol</span>
+                    <span class="manual-value">bUSDC</span>
+                  </div>
+                  <div class="manual-row">
+                    <span class="manual-label">Decimals</span>
+                    <span class="manual-value">6</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <a href="/" class="btn btn-secondary">
               Create your own payment link
             </a>

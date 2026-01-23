@@ -66,6 +66,11 @@ const txLink = document.getElementById('tx-link') as HTMLAnchorElement;
 const switchNetworkBtn = document.getElementById('switch-network-btn')!;
 const addTokenBtn = document.getElementById('add-token-btn')!;
 
+// Manual setup elements
+const toggleManualBtn = document.getElementById('toggle-manual-btn')!;
+const manualDetails = document.getElementById('manual-details')!;
+const manualTokenAddress = document.getElementById('manual-token-address')!;
+
 // Error view elements
 const errorView = document.getElementById('error-view')!;
 const errorDetail = document.getElementById('error-detail')!;
@@ -132,6 +137,11 @@ async function initialize() {
 
     // Store EVM token address for wallet integration
     evmTokenAddress = health.evmTokenAddress;
+
+    // Update manual details with token address
+    if (evmTokenAddress) {
+      manualTokenAddress.textContent = evmTokenAddress;
+    }
 
     // Initialize Aztec wallet in browser
     updateStatus('Initializing Aztec client...');
@@ -328,6 +338,12 @@ function setupEventListeners() {
   // Wallet action buttons
   switchNetworkBtn.addEventListener('click', switchToBaseSepolia);
   addTokenBtn.addEventListener('click', addTokenToWallet);
+
+  // Manual setup toggle
+  toggleManualBtn.addEventListener('click', toggleManualDetails);
+
+  // Copy token address on click
+  manualTokenAddress.addEventListener('click', copyTokenAddress);
 }
 
 async function handleClaim() {
@@ -677,6 +693,45 @@ async function addTokenToWallet() {
   }
 
   // Keep button disabled after success (no need to add again)
+}
+
+/**
+ * Toggle visibility of manual setup details
+ */
+function toggleManualDetails() {
+  const isHidden = manualDetails.style.display === 'none';
+  manualDetails.style.display = isHidden ? 'block' : 'none';
+  toggleManualBtn.classList.toggle('open', isHidden);
+
+  // Update token address when showing details
+  if (isHidden && evmTokenAddress) {
+    manualTokenAddress.textContent = evmTokenAddress;
+  }
+}
+
+/**
+ * Copy token address to clipboard
+ */
+async function copyTokenAddress() {
+  if (!evmTokenAddress) return;
+
+  try {
+    await navigator.clipboard.writeText(evmTokenAddress);
+
+    // Visual feedback
+    const originalText = manualTokenAddress.textContent;
+    manualTokenAddress.textContent = 'Copied!';
+    manualTokenAddress.style.background = 'var(--success)';
+    manualTokenAddress.style.color = 'white';
+
+    setTimeout(() => {
+      manualTokenAddress.textContent = originalText;
+      manualTokenAddress.style.background = '';
+      manualTokenAddress.style.color = '';
+    }, 1500);
+  } catch (error) {
+    console.error('Failed to copy:', error);
+  }
 }
 
 /**
