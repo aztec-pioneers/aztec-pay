@@ -5,6 +5,7 @@ import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import type { TestWallet } from "@aztec/test-wallet/server";
 import type { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
+import type { PXE } from "@aztec/pxe/server";
 
 // Bridge session tracking
 interface BridgeSession {
@@ -29,6 +30,7 @@ const BRIDGED_USDC_ABI = parseAbi([
 export class AztecToEvmBridge {
   private sessions: Map<string, BridgeSession> = new Map();
   private wallet: TestWallet;
+  private pxe: PXE;
   private token: TokenContract;
   private evmTokenAddress: `0x${string}`;
   private evmPrivateKey: `0x${string}`;
@@ -43,6 +45,8 @@ export class AztecToEvmBridge {
     evmRpcUrl: string = "https://sepolia.base.org"
   ) {
     this.wallet = wallet;
+    // Access the underlying PXE from the wallet (protected property)
+    this.pxe = (wallet as unknown as { pxe: PXE }).pxe;
     this.token = token;
     this.evmTokenAddress = evmTokenAddress as `0x${string}`;
     this.evmPrivateKey = evmPrivateKey as `0x${string}`;
@@ -52,9 +56,35 @@ export class AztecToEvmBridge {
   /**
    * Start the bridge polling loop
    */
-  start() {
+  async start() {
     console.log("[Bridge] Starting bridge service...");
+
+    // Clean up any leftover senders from previous sessions
+    await this.cleanupLeftoverSenders();
+
     this.pollInterval = setInterval(() => this.pollSessions(), POLL_INTERVAL);
+  }
+
+  /**
+   * Clean up any registered senders left over from previous sessions
+   * This prevents accumulation across server restarts
+   */
+  private async cleanupLeftoverSenders() {
+    try {
+      const senders = await this.pxe.getSenders();
+      if (senders.length > 0) {
+        console.log(`[Bridge] Found ${senders.length} leftover sender(s) from previous sessions, cleaning up...`);
+        for (const sender of senders) {
+          await this.pxe.removeSender(sender);
+          console.log(`[Bridge] Removed leftover sender ${sender.toString()}`);
+        }
+        console.log(`[Bridge] Cleanup complete`);
+      } else {
+        console.log(`[Bridge] No leftover senders to clean up`);
+      }
+    } catch (error) {
+      console.warn(`[Bridge] Failed to clean up leftover senders:`, error);
+    }
   }
 
   /**
@@ -159,22 +189,41 @@ export class AztecToEvmBridge {
       // Check if session expired
       if (now > session.expiresAt) {
         console.log(`[Bridge] Session expired for ${session.evmAddress}`);
+        // Clean up registered sender to prevent accumulation
+        if (session.senderAddress) {
+          await this.pxe.removeSender(session.senderAddress);
+          console.log(`[Bridge] Cleaned up sender ${session.senderAddress.toString()}`);
+        }
         this.sessions.delete(aztecAddr);
         continue;
       }
 
       // Check private balance - ephemeral accounts are created by server's PXE so it should see notes
       try {
+        // Sync private state to discover new notes
+        console.log(`[Bridge] Syncing private state for ${aztecAddr.slice(0, 10)}...`);
+        try {
+          await this.token.methods.sync_private_state().simulate({ from: session.aztecAddress });
+        } catch (syncError) {
+          console.warn(`[Bridge] Sync failed:`, syncError);
+        }
+
         console.log(`[Bridge] Checking private balance for ${aztecAddr.slice(0, 10)}...`);
         const balance = await this.checkPrivateBalance(session.aztecAddress);
         console.log(`[Bridge] Private balance: ${balance}`);
 
         if (balance > 0n) {
-          console.log(`[Bridge] ✓ Detected private deposit of ${balance} to ${aztecAddr}`);
+          console.log(`[Bridge] Detected private deposit of ${balance} to ${aztecAddr}`);
           console.log(`[Bridge] Minting ${balance} to EVM address ${session.evmAddress}`);
 
           // Mint on EVM
           await this.mintOnEvm(session.evmAddress, balance);
+
+          // Clean up registered sender to prevent accumulation
+          if (session.senderAddress) {
+            await this.pxe.removeSender(session.senderAddress);
+            console.log(`[Bridge] Cleaned up sender ${session.senderAddress.toString()}`);
+          }
 
           // Remove session after successful bridge
           this.sessions.delete(aztecAddr);
@@ -192,17 +241,12 @@ export class AztecToEvmBridge {
    */
   private async checkPrivateBalance(address: AztecAddress): Promise<bigint> {
     try {
-      // Sync private state first to discover any new notes
-      await this.token.methods.sync_private_state().simulate({ from: address });
-
-      // Query private balance
       const balance = await this.token.methods
         .balance_of_private(address)
         .simulate({ from: address });
 
       return balance;
     } catch (error) {
-      // If error, assume balance is 0
       console.error(`[Bridge] Error checking private balance for ${address}:`, error);
       return 0n;
     }

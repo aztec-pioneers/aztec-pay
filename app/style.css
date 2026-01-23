@@ -733,3 +733,36 @@ body {
   color: var(--text-secondary);
   margin-bottom: 24px;
 }
+
+/* Wallet Actions */
+.wallet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.btn-wallet {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  padding: 14px 20px;
+}
+
+.btn-wallet:hover:not(:disabled) {
+  background: #e8e8ed;
+}
+
+.btn-wallet svg {
+  flex-shrink: 0;
+}
+
+.btn-wallet.success {
+  background: #e8f5e9;
+  color: var(--success);
+}
+
+.btn-wallet.error {
+  background: #ffebee;
+  color: var(--error);
+}

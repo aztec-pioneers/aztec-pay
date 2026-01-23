@@ -12,6 +12,16 @@
  * 6. Bridge monitors and mints on EVM
  */
 
+// TypeScript declaration for window.ethereum
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: { method: string; params?: any[] | object }) => Promise<any>;
+      isMetaMask?: boolean;
+    };
+  }
+}
+
 import './style.css';
 import { EmbeddedWallet, Fr, AztecAddress } from './embedded-wallet';
 import { TokenContract } from '@defi-wonderland/aztec-standards/artifacts/Token';
@@ -53,6 +63,8 @@ const processingStatus = document.getElementById('processing-status')!;
 const successView = document.getElementById('success-view')!;
 const successAmount = document.getElementById('success-amount')!;
 const txLink = document.getElementById('tx-link') as HTMLAnchorElement;
+const switchNetworkBtn = document.getElementById('switch-network-btn')!;
+const addTokenBtn = document.getElementById('add-token-btn')!;
 
 // Error view elements
 const errorView = document.getElementById('error-view')!;
@@ -63,6 +75,7 @@ let paymentData: PaymentData | null = null;
 let wallet: EmbeddedWallet | null = null;
 let tokenContract: typeof TokenContract.prototype | null = null;
 let ephemeralAddress: AztecAddress | null = null;
+let evmTokenAddress: string | null = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', initialize);
@@ -116,6 +129,9 @@ async function initialize() {
       showFatalError('Bridge is not enabled on the server');
       return;
     }
+
+    // Store EVM token address for wallet integration
+    evmTokenAddress = health.evmTokenAddress;
 
     // Initialize Aztec wallet in browser
     updateStatus('Initializing Aztec client...');
@@ -308,6 +324,10 @@ function setupEventListeners() {
       handleClaim();
     }
   });
+
+  // Wallet action buttons
+  switchNetworkBtn.addEventListener('click', switchToBaseSepolia);
+  addTokenBtn.addEventListener('click', addTokenToWallet);
 }
 
 async function handleClaim() {
@@ -513,6 +533,150 @@ function showFatalError(message: string) {
   successView.style.display = 'none';
   errorView.style.display = 'block';
   errorDetail.textContent = message;
+}
+
+// Base Sepolia chain configuration
+const BASE_SEPOLIA_CHAIN_ID = '0x14a34'; // 84532 in hex
+const BASE_SEPOLIA_CONFIG = {
+  chainId: BASE_SEPOLIA_CHAIN_ID,
+  chainName: 'Base Sepolia',
+  nativeCurrency: {
+    name: 'Ethereum',
+    symbol: 'ETH',
+    decimals: 18,
+  },
+  rpcUrls: ['https://sepolia.base.org'],
+  blockExplorerUrls: ['https://sepolia.basescan.org'],
+};
+
+/**
+ * Switch the user's wallet to Base Sepolia network
+ */
+async function switchToBaseSepolia() {
+  if (typeof window.ethereum === 'undefined') {
+    alert('No wallet detected. Please install MetaMask or another Web3 wallet.');
+    return;
+  }
+
+  switchNetworkBtn.setAttribute('disabled', 'true');
+  const originalText = switchNetworkBtn.innerHTML;
+  switchNetworkBtn.innerHTML = '<span class="spinner" style="width: 18px; height: 18px; border-width: 2px;"></span> Switching...';
+
+  try {
+    // Try to switch to Base Sepolia
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }],
+    });
+
+    // Success
+    switchNetworkBtn.classList.add('success');
+    switchNetworkBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6L9 17l-5-5"/>
+      </svg>
+      Switched to Base Sepolia
+    `;
+    console.log('[Wallet] Successfully switched to Base Sepolia');
+  } catch (switchError: any) {
+    // Chain not added, try to add it
+    if (switchError.code === 4902) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [BASE_SEPOLIA_CONFIG],
+        });
+
+        // Success after adding
+        switchNetworkBtn.classList.add('success');
+        switchNetworkBtn.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+          Added & Switched to Base Sepolia
+        `;
+        console.log('[Wallet] Added and switched to Base Sepolia');
+      } catch (addError) {
+        console.error('[Wallet] Failed to add Base Sepolia:', addError);
+        switchNetworkBtn.classList.add('error');
+        switchNetworkBtn.innerHTML = originalText;
+        switchNetworkBtn.removeAttribute('disabled');
+        alert('Failed to add Base Sepolia network. Please add it manually.');
+        return;
+      }
+    } else if (switchError.code === 4001) {
+      // User rejected
+      console.log('[Wallet] User rejected network switch');
+      switchNetworkBtn.innerHTML = originalText;
+      switchNetworkBtn.removeAttribute('disabled');
+      return;
+    } else {
+      console.error('[Wallet] Failed to switch network:', switchError);
+      switchNetworkBtn.classList.add('error');
+      switchNetworkBtn.innerHTML = originalText;
+      switchNetworkBtn.removeAttribute('disabled');
+      alert('Failed to switch network. Please try manually.');
+      return;
+    }
+  }
+
+  // Keep button disabled after success (no need to switch again)
+}
+
+/**
+ * Add the bUSDC token to the user's wallet
+ */
+async function addTokenToWallet() {
+  if (typeof window.ethereum === 'undefined') {
+    alert('No wallet detected. Please install MetaMask or another Web3 wallet.');
+    return;
+  }
+
+  if (!evmTokenAddress) {
+    alert('Token address not available. Please try again.');
+    return;
+  }
+
+  addTokenBtn.setAttribute('disabled', 'true');
+  const originalText = addTokenBtn.innerHTML;
+  addTokenBtn.innerHTML = '<span class="spinner" style="width: 18px; height: 18px; border-width: 2px;"></span> Adding...';
+
+  try {
+    const wasAdded = await window.ethereum.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: {
+          address: evmTokenAddress,
+          symbol: 'bUSDC',
+          decimals: 6,
+        },
+      },
+    });
+
+    if (wasAdded) {
+      addTokenBtn.classList.add('success');
+      addTokenBtn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5"/>
+        </svg>
+        Token Added
+      `;
+      console.log('[Wallet] Token added to wallet');
+    } else {
+      console.log('[Wallet] User declined to add token');
+      addTokenBtn.innerHTML = originalText;
+      addTokenBtn.removeAttribute('disabled');
+    }
+  } catch (error) {
+    console.error('[Wallet] Failed to add token:', error);
+    addTokenBtn.classList.add('error');
+    addTokenBtn.innerHTML = originalText;
+    addTokenBtn.removeAttribute('disabled');
+    alert('Failed to add token. Please add it manually.');
+  }
+
+  // Keep button disabled after success (no need to add again)
 }
 
 /**

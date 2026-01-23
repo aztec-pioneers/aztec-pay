@@ -70,7 +70,7 @@ async function initialize() {
     console.log("Initializing Aztec -> EVM bridge...");
     console.log(`  EVM RPC: ${EVM_RPC_URL}`);
     bridge = new AztecToEvmBridge(wallet, token, EVM_TOKEN_ADDRESS, EVM_PRIVATE_KEY, EVM_RPC_URL);
-    bridge.start();
+    await bridge.start();
     console.log(`Bridge initialized with EVM token at ${EVM_TOKEN_ADDRESS}`);
   } else {
     console.log("Bridge disabled - set EVM_TOKEN_ADDRESS and EVM_PRIVATE_KEY to enable");
