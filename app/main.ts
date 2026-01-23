@@ -17,6 +17,7 @@ import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/cont
 // Configuration
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const STORAGE_KEY = 'aztec-pay-account';
+const BLOCK_NUMBER_KEY = 'aztec-pay-last-block';
 
 // State
 let wallet: EmbeddedWallet;
@@ -64,11 +65,15 @@ async function initialize() {
     updateStatus('Initializing Aztec client...');
     wallet = await EmbeddedWallet.initialize(AZTEC_NODE_URL);
 
-    // Step 3: Register token contract
+    // Step 3: Check for sandbox restart and clear stale data if needed
+    updateStatus('Checking network state...');
+    await checkForSandboxRestart();
+
+    // Step 4: Register token contract
     updateStatus('Registering token contract...');
     await registerTokenContract();
 
-    // Step 4: Load or create account
+    // Step 5: Load or create account
     updateStatus('Setting up account...');
     let account = await wallet.connectExistingAccount();
 
@@ -77,7 +82,7 @@ async function initialize() {
       account = await wallet.createAccountAndConnect();
     }
 
-    // Step 5: Refresh balance
+    // Step 6: Refresh balance
     updateStatus('Loading balance...');
     await refreshBalance();
 
@@ -91,6 +96,36 @@ async function initialize() {
     console.error('Initialization error:', error);
     updateStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
     setTimeout(initialize, 3000);
+  }
+}
+
+/**
+ * Detect if the Aztec sandbox was restarted by comparing block numbers.
+ * If current block < last saved block, the sandbox was reset and we need to clear localStorage.
+ */
+async function checkForSandboxRestart() {
+  try {
+    const currentBlock = await wallet.getBlockNumber();
+    const savedBlockStr = localStorage.getItem(BLOCK_NUMBER_KEY);
+    const savedBlock = savedBlockStr ? parseInt(savedBlockStr, 10) : 0;
+
+    console.log(`[Sandbox Check] Current block: ${currentBlock}, Last saved block: ${savedBlock}`);
+
+    if (savedBlock > 0 && currentBlock < savedBlock) {
+      console.log('[Sandbox Check] Sandbox restart detected! Clearing stale localStorage data...');
+
+      // Clear all aztec-pay related localStorage
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(BLOCK_NUMBER_KEY);
+
+      console.log('[Sandbox Check] Stale data cleared. Fresh start.');
+    }
+
+    // Save the current block number for future comparisons
+    localStorage.setItem(BLOCK_NUMBER_KEY, currentBlock.toString());
+    console.log(`[Sandbox Check] Saved current block: ${currentBlock}`);
+  } catch (error) {
+    console.warn('[Sandbox Check] Could not check block number:', error);
   }
 }
 

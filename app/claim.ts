@@ -28,6 +28,8 @@ interface PaymentData {
 
 // Configuration
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
+const BLOCK_NUMBER_KEY = 'aztec-pay-last-block';
+const ACCOUNT_STORAGE_KEY = 'aztec-pay-account';
 
 // DOM Elements
 const loadingScreen = document.getElementById('loading-screen')!;
@@ -118,6 +120,10 @@ async function initialize() {
     // Initialize Aztec wallet in browser
     updateStatus('Initializing Aztec client...');
     wallet = await EmbeddedWallet.initialize(AZTEC_NODE_URL);
+
+    // Check for sandbox restart and clear stale data if needed
+    updateStatus('Checking network state...');
+    await checkForSandboxRestart();
 
     // Register token contract
     updateStatus('Registering token contract...');
@@ -507,4 +513,36 @@ function showFatalError(message: string) {
   successView.style.display = 'none';
   errorView.style.display = 'block';
   errorDetail.textContent = message;
+}
+
+/**
+ * Detect if the Aztec sandbox was restarted by comparing block numbers.
+ * If current block < last saved block, the sandbox was reset and we need to clear localStorage.
+ */
+async function checkForSandboxRestart() {
+  if (!wallet) return;
+
+  try {
+    const currentBlock = await wallet.getBlockNumber();
+    const savedBlockStr = localStorage.getItem(BLOCK_NUMBER_KEY);
+    const savedBlock = savedBlockStr ? parseInt(savedBlockStr, 10) : 0;
+
+    console.log(`[Sandbox Check] Current block: ${currentBlock}, Last saved block: ${savedBlock}`);
+
+    if (savedBlock > 0 && currentBlock < savedBlock) {
+      console.log('[Sandbox Check] Sandbox restart detected! Clearing stale localStorage data...');
+
+      // Clear all aztec-pay related localStorage
+      localStorage.removeItem(ACCOUNT_STORAGE_KEY);
+      localStorage.removeItem(BLOCK_NUMBER_KEY);
+
+      console.log('[Sandbox Check] Stale data cleared. Fresh start.');
+    }
+
+    // Save the current block number for future comparisons
+    localStorage.setItem(BLOCK_NUMBER_KEY, currentBlock.toString());
+    console.log(`[Sandbox Check] Saved current block: ${currentBlock}`);
+  } catch (error) {
+    console.warn('[Sandbox Check] Could not check block number:', error);
+  }
 }
