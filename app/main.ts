@@ -241,7 +241,44 @@ async function refreshBalance() {
     console.log('[Balance] Display balance:', userBalance);
   } catch (error) {
     console.error('Failed to fetch balance:', error);
+
+    // Check if this is a stale state error - clear storage and reload
+    if (isStaleStateError(error)) {
+      await handleStaleState();
+    }
   }
+}
+
+/**
+ * Check if an error indicates stale browser state (old notes, missing data, etc.)
+ */
+function isStaleStateError(error: unknown): boolean {
+  const errorStr = String(error);
+  const staleIndicators = [
+    'Failed to get a note',
+    'Note not found',
+    'Nullifier',
+    'Unknown contract',
+    'Contract not found',
+    'Could not find key',
+  ];
+  return staleIndicators.some(indicator => errorStr.includes(indicator));
+}
+
+/**
+ * Handle stale state by clearing all storage and reloading
+ */
+async function handleStaleState() {
+  console.log('[Stale State] Detected stale browser state, clearing storage...');
+
+  // Clear localStorage
+  localStorage.clear();
+
+  // Clear IndexedDB
+  await clearAllIndexedDB();
+
+  console.log('[Stale State] Storage cleared, reloading page...');
+  window.location.reload();
 }
 
 async function faucet() {
