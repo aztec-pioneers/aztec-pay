@@ -22,11 +22,16 @@ COPY . .
 # Build frontend
 RUN npm run build
 
-# Production stage for backend (using slim for glibc compatibility with Aztec native modules)
-FROM node:22-slim AS backend
+# Production stage for backend (using Ubuntu 24.04 for GLIBCXX_3.4.32 required by @aztec/bb.js)
+FROM ubuntu:24.04 AS backend
 
-# Install git (needed for GitHub dependencies) and husky globally (for postinstall scripts)
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/* && npm install -g husky
+# Install Node.js 22, git, and required libraries
+RUN apt-get update && \
+    apt-get install -y curl git libstdc++6 && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g husky
 
 WORKDIR /app
 
