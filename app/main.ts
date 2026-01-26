@@ -111,9 +111,11 @@ async function checkServerRestart(serverTimestamp: number): Promise<void> {
 
   console.log(`[Server Check] Server timestamp: ${serverTimestamp}, Saved timestamp: ${savedTimestamp}`);
 
-  // If no saved timestamp, this is first load - just save it
+  // If no saved timestamp, this could be first load OR localStorage was cleared while IndexedDB persisted
+  // Clear IndexedDB to be safe - if truly first use, this is a no-op
   if (!savedTimestamp) {
-    console.log('[Server Check] First load - saving server timestamp');
+    console.log('[Server Check] No saved timestamp - clearing IndexedDB to ensure clean state');
+    await clearAllIndexedDB();
     localStorage.setItem(SERVER_TIMESTAMP_KEY, serverTimestamp.toString());
     return;
   }
