@@ -29,6 +29,7 @@ const BRIDGED_USDC_ABI = parseAbi([
 
 export class AztecToEvmBridge {
   private sessions: Map<string, BridgeSession> = new Map();
+  private processingJobs: Set<string> = new Set(); // Track jobs being processed
   private wallet: TestWallet;
   private pxe: PXE;
   private token: TokenContract;
@@ -186,6 +187,11 @@ export class AztecToEvmBridge {
     const now = Date.now();
 
     for (const [aztecAddr, session] of this.sessions.entries()) {
+      // Skip if already being processed
+      if (this.processingJobs.has(aztecAddr)) {
+        continue;
+      }
+
       // Check if session expired
       if (now > session.expiresAt) {
         console.log(`[Bridge] Session expired for ${session.evmAddress}`);
@@ -214,6 +220,11 @@ export class AztecToEvmBridge {
 
         if (balance > 0n) {
           console.log(`[Bridge] Detected private deposit of ${balance} to ${aztecAddr}`);
+
+          // Mark as processing IMMEDIATELY to prevent duplicate processing
+          this.processingJobs.add(aztecAddr);
+          console.log(`[Bridge] Marked job as processing for ${aztecAddr.slice(0, 10)}`);
+
           console.log(`[Bridge] Minting ${balance} to EVM address ${session.evmAddress}`);
 
           // Mint on EVM
@@ -225,12 +236,17 @@ export class AztecToEvmBridge {
             console.log(`[Bridge] Cleaned up sender ${session.senderAddress.toString()}`);
           }
 
+          // Remove from processing jobs
+          this.processingJobs.delete(aztecAddr);
+
           // Remove session after successful bridge
           this.sessions.delete(aztecAddr);
           console.log(`[Bridge] Bridge completed for ${session.evmAddress}`);
         }
       } catch (error) {
         console.error(`[Bridge] Error checking balance for ${aztecAddr}:`, error);
+        // Remove from processing if it was added (allows retry on next poll)
+        this.processingJobs.delete(aztecAddr);
       }
     }
   }
