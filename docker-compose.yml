@@ -6,7 +6,7 @@ services:
       - local-network
     image: aztecprotocol/aztec:3.0.0-devnet.20251212
     ports:
-      - "8545:8545"
+      - "127.0.0.1:8545:8545"  # Localhost only - not exposed externally
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
@@ -22,9 +22,9 @@ services:
       - local-network
     image: aztecprotocol/aztec:3.0.0-devnet.20251212
     ports:
-      - "8080:8080"
-      - "40400:40400"
-      - "40400:40400/udp"
+      - "127.0.0.1:8080:8080"    # Localhost only - nginx proxies this
+      - "127.0.0.1:40400:40400"  # P2P port - localhost only
+      - "127.0.0.1:40400:40400/udp"
     environment:
       - LOG_LEVEL=info
       - L1_CHAIN_ID=31337
@@ -56,7 +56,7 @@ services:
       context: .
       target: backend
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"  # Localhost only - nginx proxies this
     environment:
       - PORT=3001
       - NODE_ENV=production
@@ -79,8 +79,15 @@ services:
     build:
       context: .
       target: frontend
+      args:
+        # Frontend build-time configuration (baked into the JS bundle)
+        # For production, set these to your public URLs
+        # Defaults work for local development
+        AZTEC_NODE_URL: ${AZTEC_NODE_URL:-http://localhost:8080}
+        API_BASE_URL: ${API_BASE_URL:-}  # Empty = relative URLs (nginx proxies /api)
+        API_URL: ${API_URL:-http://localhost:3001}
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"  # Localhost only - nginx proxies this
     depends_on:
       - backend
     restart: unless-stopped

@@ -1,6 +1,13 @@
 # Build stage
 FROM node:22-alpine AS builder
 
+# Build arguments for frontend configuration (baked into the bundle at build time)
+# These can be overridden with --build-arg when running docker build
+ARG AZTEC_NODE_URL=http://localhost:8080
+ARG API_BASE_URL=
+# API_URL is only used by webpack dev server proxy (not needed in production)
+ARG API_URL=http://localhost:3001
+
 # Install git (needed for GitHub dependencies) and husky globally (for postinstall scripts)
 RUN apk add --no-cache git && npm install -g husky
 
@@ -19,7 +26,12 @@ COPY docker-assets/aztec-standards-target ./node_modules/@defi-wonderland/aztec-
 # Copy source code
 COPY . .
 
-# Build frontend
+# Create .env file from build args for dotenv-webpack to pick up
+RUN echo "AZTEC_NODE_URL=${AZTEC_NODE_URL}" > .env && \
+    echo "API_BASE_URL=${API_BASE_URL}" >> .env && \
+    echo "API_URL=${API_URL}" >> .env
+
+# Build frontend (uses .env values via dotenv-webpack)
 RUN npm run build
 
 # Production stage for backend (using Ubuntu 24.04 for GLIBCXX_3.4.32 required by @aztec/bb.js)

@@ -10,7 +10,7 @@ import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { TestWallet } from "@aztec/test-wallet/client/bundle";
 import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
 
-const AZTEC_NODE_URL = "http://localhost:8080";
+const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
 
 let wallet: TestWallet | null = null;
 let isInitialized = false;

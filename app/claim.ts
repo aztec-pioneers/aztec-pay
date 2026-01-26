@@ -38,6 +38,7 @@ interface PaymentData {
 
 // Configuration
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
+const API_BASE_URL = process.env.API_BASE_URL || ''; // Empty string = relative URLs (proxied by nginx)
 const BLOCK_NUMBER_KEY = 'aztec-pay-last-block';
 const ACCOUNT_STORAGE_KEY = 'aztec-pay-account';
 
@@ -235,7 +236,7 @@ async function initialize() {
 
 async function checkServerHealth(): Promise<{ bridgeEnabled: boolean; evmTokenAddress: string } | null> {
   try {
-    const response = await fetch('/api/health');
+    const response = await fetch(`${API_BASE_URL}/api/health`);
     const data = await response.json();
 
     if (data.status === 'ok') {
@@ -377,7 +378,7 @@ async function handleClaim() {
     console.log('[Claim] Initiating bridge for EVM address:', evmAddress);
     console.log('[Claim] Sender address (ephemeral):', ephemeralAddress.toString());
 
-    const bridgeResponse = await fetch('/api/bridge/initiate', {
+    const bridgeResponse = await fetch(`${API_BASE_URL}/api/bridge/initiate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -494,7 +495,7 @@ async function waitForBridgeCompletion(aztecDepositAddress: string, evmAddress: 
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
-      const response = await fetch(`/api/bridge/status/${aztecDepositAddress}`);
+      const response = await fetch(`${API_BASE_URL}/api/bridge/status/${aztecDepositAddress}`);
       const data = await response.json();
 
       console.log('[Claim] Bridge status:', data.status);

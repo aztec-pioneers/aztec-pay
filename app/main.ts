@@ -16,6 +16,7 @@ import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/cont
 
 // Configuration
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
+const API_BASE_URL = process.env.API_BASE_URL || ''; // Empty string = relative URLs (proxied by nginx)
 const STORAGE_KEY = 'aztec-pay-account';
 const BLOCK_NUMBER_KEY = 'aztec-pay-last-block';
 
@@ -132,7 +133,7 @@ async function checkForSandboxRestart() {
 
 async function checkServerHealth(): Promise<{ tokenAddress: string } | null> {
   try {
-    const response = await fetch('/api/health');
+    const response = await fetch(`${API_BASE_URL}/api/health`);
     const data = await response.json();
 
     if (data.status === 'ok' && data.tokenAddress) {
@@ -202,7 +203,7 @@ async function faucet() {
 
   try {
     console.log('[Faucet] Requesting mint for:', wallet.connectedAccount.toString());
-    const response = await fetch('/api/faucet', {
+    const response = await fetch(`${API_BASE_URL}/api/faucet`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address: wallet.connectedAccount.toString() }),
