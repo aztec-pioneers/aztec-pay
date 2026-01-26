@@ -228,7 +228,14 @@ export class AztecToEvmBridge {
           console.log(`[Bridge] Minting ${balance} to EVM address ${session.evmAddress}`);
 
           // Mint on EVM
-          await this.mintOnEvm(session.evmAddress, balance);
+          try {
+            await this.mintOnEvm(session.evmAddress, balance);
+          } catch (mintError) {
+            console.error(`[Bridge] EVM MINT FAILED:`, mintError);
+            // Remove from processing to allow retry
+            this.processingJobs.delete(aztecAddr);
+            continue; // Skip cleanup, allow retry on next poll
+          }
 
           // Clean up registered sender to prevent accumulation
           if (session.senderAddress) {
@@ -272,7 +279,11 @@ export class AztecToEvmBridge {
    * Mint tokens on EVM (Base Sepolia)
    */
   private async mintOnEvm(to: string, amount: bigint) {
+    console.log(`[Bridge] mintOnEvm called - to: ${to}, amount: ${amount}`);
+    console.log(`[Bridge] EVM config - RPC: ${this.evmRpcUrl}, Token: ${this.evmTokenAddress}`);
+
     const account = privateKeyToAccount(this.evmPrivateKey);
+    console.log(`[Bridge] Minter account: ${account.address}`);
 
     const walletClient = createWalletClient({
       account,
@@ -280,6 +291,7 @@ export class AztecToEvmBridge {
       transport: http(this.evmRpcUrl),
     });
 
+    console.log(`[Bridge] Sending mint transaction...`);
     const hash = await walletClient.writeContract({
       address: this.evmTokenAddress,
       abi: BRIDGED_USDC_ABI,
@@ -287,17 +299,18 @@ export class AztecToEvmBridge {
       args: [to as `0x${string}`, amount],
     });
 
-    console.log(`[Bridge] EVM mint tx: ${hash}`);
+    console.log(`[Bridge] EVM mint tx submitted: ${hash}`);
     console.log(`[Bridge] View on BaseScan: https://sepolia.basescan.org/tx/${hash}`);
 
     // Wait for confirmation
+    console.log(`[Bridge] Waiting for transaction confirmation...`);
     const publicClient = createPublicClient({
       chain: baseSepolia,
       transport: http(this.evmRpcUrl),
     });
 
-    await publicClient.waitForTransactionReceipt({ hash });
-    console.log(`[Bridge] EVM mint confirmed`);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    console.log(`[Bridge] EVM mint confirmed - status: ${receipt.status}, block: ${receipt.blockNumber}`);
   }
 
   /**
