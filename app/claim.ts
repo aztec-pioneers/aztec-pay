@@ -329,9 +329,16 @@ function displayPaymentInfo() {
 function setupEventListeners() {
   claimBtn.addEventListener('click', handleClaim);
 
-  // Enter key on input triggers claim
+  // Real-time EVM address validation
+  evmAddressInput.addEventListener('input', validateEvmAddressInput);
+  evmAddressInput.addEventListener('paste', () => {
+    // Validate after paste event completes
+    setTimeout(validateEvmAddressInput, 0);
+  });
+
+  // Enter key on input triggers claim (only if valid)
   evmAddressInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && isValidEvmAddress(evmAddressInput.value.trim())) {
       handleClaim();
     }
   });
@@ -345,6 +352,65 @@ function setupEventListeners() {
 
   // Copy token address on click
   manualTokenAddress.addEventListener('click', copyTokenAddress);
+
+  // Initial state - disable claim button
+  claimBtn.setAttribute('disabled', 'true');
+}
+
+/**
+ * Check if a string is a valid EVM address
+ */
+function isValidEvmAddress(address: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(address);
+}
+
+/**
+ * Validate EVM address input and update UI accordingly
+ */
+function validateEvmAddressInput() {
+  const address = evmAddressInput.value.trim();
+
+  // Remove previous validation classes
+  evmAddressInput.classList.remove('valid', 'invalid');
+  hideError();
+
+  // Empty input - neutral state
+  if (!address) {
+    claimBtn.setAttribute('disabled', 'true');
+    return;
+  }
+
+  // Check if it starts with 0x
+  if (!address.startsWith('0x')) {
+    evmAddressInput.classList.add('invalid');
+    claimBtn.setAttribute('disabled', 'true');
+    showError('Address must start with 0x');
+    return;
+  }
+
+  // Check length (0x + 40 hex chars = 42 total)
+  if (address.length !== 42) {
+    evmAddressInput.classList.add('invalid');
+    claimBtn.setAttribute('disabled', 'true');
+    if (address.length < 42) {
+      showError(`Address too short (${address.length}/42 characters)`);
+    } else {
+      showError(`Address too long (${address.length}/42 characters)`);
+    }
+    return;
+  }
+
+  // Check if all characters after 0x are valid hex
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    evmAddressInput.classList.add('invalid');
+    claimBtn.setAttribute('disabled', 'true');
+    showError('Address contains invalid characters (only 0-9, a-f, A-F allowed)');
+    return;
+  }
+
+  // Valid address
+  evmAddressInput.classList.add('valid');
+  claimBtn.removeAttribute('disabled');
 }
 
 async function handleClaim() {
