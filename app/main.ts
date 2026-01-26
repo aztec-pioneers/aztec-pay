@@ -61,9 +61,8 @@ async function initialize() {
       return;
     }
 
-    // Step 2: Check if server restarted and clear stale data if needed
-    // This must happen BEFORE initializing Aztec client to avoid stale IndexedDB issues
-    await checkServerRestart(healthData.serverStartupTimestamp);
+    // Step 2: Check if server restarted and clear stale localStorage if needed
+    checkServerRestart(healthData.serverStartupTimestamp);
 
     tokenAddress = healthData.tokenAddress;
 
@@ -103,80 +102,31 @@ async function initialize() {
 
 /**
  * Detect if the server was restarted by comparing startup timestamps.
- * If timestamp differs from stored value, clear all storage.
- * This runs BEFORE Aztec client init, so clearing storage is safe - the client will create fresh databases.
+ * If timestamp differs, clear localStorage (user must manually clear site data for IndexedDB issues).
  */
-async function checkServerRestart(serverTimestamp: number): Promise<void> {
+function checkServerRestart(serverTimestamp: number): void {
   const savedTimestamp = localStorage.getItem(SERVER_TIMESTAMP_KEY);
 
   console.log(`[Server Check] Server timestamp: ${serverTimestamp}, Saved timestamp: ${savedTimestamp}`);
 
-  // If no saved timestamp, this could be first load OR localStorage was cleared while IndexedDB persisted
-  // Clear IndexedDB to be safe - if truly first use, this is a no-op
+  // First load - just save timestamp
   if (!savedTimestamp) {
-    console.log('[Server Check] No saved timestamp - clearing IndexedDB to ensure clean state');
-    await clearAllIndexedDB();
+    console.log('[Server Check] First load - saving server timestamp');
     localStorage.setItem(SERVER_TIMESTAMP_KEY, serverTimestamp.toString());
     return;
   }
 
-  // If timestamps match, all good
+  // Timestamps match - all good
   if (savedTimestamp === serverTimestamp.toString()) {
     console.log('[Server Check] Timestamps match - no restart detected');
     return;
   }
 
-  // Server restarted - need to clear everything
-  console.log('[Server Check] Server restart detected! Clearing all storage...');
-
-  // Clear all localStorage
-  console.log('[Server Check] Clearing localStorage...');
+  // Server restarted - clear localStorage
+  console.log('[Server Check] Server restart detected! Clearing localStorage...');
   localStorage.clear();
-
-  // Clear all IndexedDB databases and wait for completion
-  console.log('[Server Check] Clearing IndexedDB...');
-  await clearAllIndexedDB();
-
-  // Save new timestamp
   localStorage.setItem(SERVER_TIMESTAMP_KEY, serverTimestamp.toString());
-  console.log('[Server Check] Storage cleared. Starting fresh.');
-}
-
-/**
- * Delete all IndexedDB databases and wait for completion
- */
-async function clearAllIndexedDB(): Promise<void> {
-  const deleteDatabase = (name: string): Promise<void> => {
-    return new Promise((resolve) => {
-      const request = indexedDB.deleteDatabase(name);
-      request.onsuccess = () => {
-        console.log(`[Server Check] Deleted IndexedDB: ${name}`);
-        resolve();
-      };
-      request.onerror = () => {
-        console.warn(`[Server Check] Failed to delete IndexedDB: ${name}`);
-        resolve(); // Resolve anyway to continue
-      };
-      request.onblocked = () => {
-        console.warn(`[Server Check] IndexedDB deletion blocked: ${name}`);
-        resolve(); // Resolve anyway to continue
-      };
-    });
-  };
-
-  try {
-    const databases = await indexedDB.databases();
-    await Promise.all(
-      databases
-        .filter((db) => db.name)
-        .map((db) => deleteDatabase(db.name!))
-    );
-  } catch (error) {
-    console.warn('[Server Check] Could not enumerate IndexedDB databases:', error);
-    // Fallback: try to delete known Aztec databases
-    const knownDatabases = ['aztec-pxe', 'pxe_data', 'aztec'];
-    await Promise.all(knownDatabases.map((name) => deleteDatabase(name)));
-  }
+  console.log('[Server Check] localStorage cleared. If issues persist, clear site data manually.');
 }
 
 async function checkServerHealth(): Promise<{ tokenAddress: string; serverStartupTimestamp: number } | null> {
@@ -243,44 +193,7 @@ async function refreshBalance() {
     console.log('[Balance] Display balance:', userBalance);
   } catch (error) {
     console.error('Failed to fetch balance:', error);
-
-    // Check if this is a stale state error - clear storage and reload
-    if (isStaleStateError(error)) {
-      await handleStaleState();
-    }
   }
-}
-
-/**
- * Check if an error indicates stale browser state (old notes, missing data, etc.)
- */
-function isStaleStateError(error: unknown): boolean {
-  const errorStr = String(error);
-  const staleIndicators = [
-    'Failed to get a note',
-    'Note not found',
-    'Nullifier',
-    'Unknown contract',
-    'Contract not found',
-    'Could not find key',
-  ];
-  return staleIndicators.some(indicator => errorStr.includes(indicator));
-}
-
-/**
- * Handle stale state by clearing all storage and reloading
- */
-async function handleStaleState() {
-  console.log('[Stale State] Detected stale browser state, clearing storage...');
-
-  // Clear localStorage
-  localStorage.clear();
-
-  // Clear IndexedDB
-  await clearAllIndexedDB();
-
-  console.log('[Stale State] Storage cleared, reloading page...');
-  window.location.reload();
 }
 
 async function faucet() {
