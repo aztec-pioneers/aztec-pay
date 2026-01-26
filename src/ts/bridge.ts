@@ -285,6 +285,19 @@ export class AztecToEvmBridge {
     const account = privateKeyToAccount(this.evmPrivateKey);
     console.log(`[Bridge] Minter account: ${account.address}`);
 
+    const publicClient = createPublicClient({
+      chain: baseSepolia,
+      transport: http(this.evmRpcUrl),
+    });
+
+    // Check minter's ETH balance first
+    const ethBalance = await publicClient.getBalance({ address: account.address });
+    console.log(`[Bridge] Minter ETH balance: ${ethBalance} wei (${Number(ethBalance) / 1e18} ETH)`);
+
+    if (ethBalance === 0n) {
+      throw new Error(`Minter account ${account.address} has no ETH for gas! Fund it with Base Sepolia ETH.`);
+    }
+
     const walletClient = createWalletClient({
       account,
       chain: baseSepolia,
@@ -292,23 +305,26 @@ export class AztecToEvmBridge {
     });
 
     console.log(`[Bridge] Sending mint transaction...`);
-    const hash = await walletClient.writeContract({
+
+    // Add timeout to prevent hanging forever
+    const txPromise = walletClient.writeContract({
       address: this.evmTokenAddress,
       abi: BRIDGED_USDC_ABI,
       functionName: "mint",
       args: [to as `0x${string}`, amount],
     });
 
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Transaction submission timed out after 30s')), 30000);
+    });
+
+    const hash = await Promise.race([txPromise, timeoutPromise]);
+
     console.log(`[Bridge] EVM mint tx submitted: ${hash}`);
     console.log(`[Bridge] View on BaseScan: https://sepolia.basescan.org/tx/${hash}`);
 
     // Wait for confirmation
     console.log(`[Bridge] Waiting for transaction confirmation...`);
-    const publicClient = createPublicClient({
-      chain: baseSepolia,
-      transport: http(this.evmRpcUrl),
-    });
-
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     console.log(`[Bridge] EVM mint confirmed - status: ${receipt.status}, block: ${receipt.blockNumber}`);
   }
