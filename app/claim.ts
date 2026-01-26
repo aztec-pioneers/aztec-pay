@@ -39,8 +39,7 @@ interface PaymentData {
 // Configuration
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const API_BASE_URL = process.env.API_BASE_URL || ''; // Empty string = relative URLs (proxied by nginx)
-const BLOCK_NUMBER_KEY = 'aztec-pay-last-block';
-const ACCOUNT_STORAGE_KEY = 'aztec-pay-account';
+const SERVER_TIMESTAMP_KEY = 'aztec-pay-server-timestamp';
 
 // DOM Elements
 const loadingScreen = document.getElementById('loading-screen')!;
@@ -131,6 +130,10 @@ async function initialize() {
       return;
     }
 
+    // Check if server restarted and clear stale data if needed
+    // This must happen BEFORE initializing Aztec client to avoid stale IndexedDB issues
+    await checkServerRestart(health.serverStartupTimestamp);
+
     if (!health.bridgeEnabled) {
       showFatalError('Bridge is not enabled on the server');
       return;
@@ -147,10 +150,6 @@ async function initialize() {
     // Initialize Aztec wallet in browser
     updateStatus('Initializing Aztec client...');
     wallet = await EmbeddedWallet.initialize(AZTEC_NODE_URL);
-
-    // Check for sandbox restart and clear stale data if needed
-    updateStatus('Checking network state...');
-    await checkForSandboxRestart();
 
     // Register token contract
     updateStatus('Registering token contract...');
@@ -234,7 +233,7 @@ async function initialize() {
   }
 }
 
-async function checkServerHealth(): Promise<{ bridgeEnabled: boolean; evmTokenAddress: string } | null> {
+async function checkServerHealth(): Promise<{ bridgeEnabled: boolean; evmTokenAddress: string; serverStartupTimestamp: number } | null> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/health`);
     const data = await response.json();
@@ -243,6 +242,7 @@ async function checkServerHealth(): Promise<{ bridgeEnabled: boolean; evmTokenAd
       return {
         bridgeEnabled: data.bridgeEnabled,
         evmTokenAddress: data.evmTokenAddress,
+        serverStartupTimestamp: data.serverStartupTimestamp,
       };
     }
     return null;
@@ -736,33 +736,77 @@ async function copyTokenAddress() {
 }
 
 /**
- * Detect if the Aztec sandbox was restarted by comparing block numbers.
- * If current block < last saved block, the sandbox was reset and we need to clear localStorage.
+ * Detect if the server was restarted by comparing startup timestamps.
+ * If timestamp differs from stored value, clear all storage.
+ * This runs BEFORE Aztec client init, so clearing storage is safe - the client will create fresh databases.
  */
-async function checkForSandboxRestart() {
-  if (!wallet) return;
+async function checkServerRestart(serverTimestamp: number): Promise<void> {
+  const savedTimestamp = localStorage.getItem(SERVER_TIMESTAMP_KEY);
+
+  console.log(`[Server Check] Server timestamp: ${serverTimestamp}, Saved timestamp: ${savedTimestamp}`);
+
+  // If no saved timestamp, this is first load - just save it
+  if (!savedTimestamp) {
+    console.log('[Server Check] First load - saving server timestamp');
+    localStorage.setItem(SERVER_TIMESTAMP_KEY, serverTimestamp.toString());
+    return;
+  }
+
+  // If timestamps match, all good
+  if (savedTimestamp === serverTimestamp.toString()) {
+    console.log('[Server Check] Timestamps match - no restart detected');
+    return;
+  }
+
+  // Server restarted - need to clear everything
+  console.log('[Server Check] Server restart detected! Clearing all storage...');
+
+  // Clear all localStorage
+  console.log('[Server Check] Clearing localStorage...');
+  localStorage.clear();
+
+  // Clear all IndexedDB databases and wait for completion
+  console.log('[Server Check] Clearing IndexedDB...');
+  await clearAllIndexedDB();
+
+  // Save new timestamp
+  localStorage.setItem(SERVER_TIMESTAMP_KEY, serverTimestamp.toString());
+  console.log('[Server Check] Storage cleared. Starting fresh.');
+}
+
+/**
+ * Delete all IndexedDB databases and wait for completion
+ */
+async function clearAllIndexedDB(): Promise<void> {
+  const deleteDatabase = (name: string): Promise<void> => {
+    return new Promise((resolve) => {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = () => {
+        console.log(`[Server Check] Deleted IndexedDB: ${name}`);
+        resolve();
+      };
+      request.onerror = () => {
+        console.warn(`[Server Check] Failed to delete IndexedDB: ${name}`);
+        resolve(); // Resolve anyway to continue
+      };
+      request.onblocked = () => {
+        console.warn(`[Server Check] IndexedDB deletion blocked: ${name}`);
+        resolve(); // Resolve anyway to continue
+      };
+    });
+  };
 
   try {
-    const currentBlock = await wallet.getBlockNumber();
-    const savedBlockStr = localStorage.getItem(BLOCK_NUMBER_KEY);
-    const savedBlock = savedBlockStr ? parseInt(savedBlockStr, 10) : 0;
-
-    console.log(`[Sandbox Check] Current block: ${currentBlock}, Last saved block: ${savedBlock}`);
-
-    if (savedBlock > 0 && currentBlock < savedBlock) {
-      console.log('[Sandbox Check] Sandbox restart detected! Clearing stale localStorage data...');
-
-      // Clear all aztec-pay related localStorage
-      localStorage.removeItem(ACCOUNT_STORAGE_KEY);
-      localStorage.removeItem(BLOCK_NUMBER_KEY);
-
-      console.log('[Sandbox Check] Stale data cleared. Fresh start.');
-    }
-
-    // Save the current block number for future comparisons
-    localStorage.setItem(BLOCK_NUMBER_KEY, currentBlock.toString());
-    console.log(`[Sandbox Check] Saved current block: ${currentBlock}`);
+    const databases = await indexedDB.databases();
+    await Promise.all(
+      databases
+        .filter((db) => db.name)
+        .map((db) => deleteDatabase(db.name!))
+    );
   } catch (error) {
-    console.warn('[Sandbox Check] Could not check block number:', error);
+    console.warn('[Server Check] Could not enumerate IndexedDB databases:', error);
+    // Fallback: try to delete known Aztec databases
+    const knownDatabases = ['aztec-pxe', 'pxe_data', 'aztec'];
+    await Promise.all(knownDatabases.map((name) => deleteDatabase(name)));
   }
 }

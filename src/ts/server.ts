@@ -16,6 +16,10 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const FAUCET_AMOUNT = 1000n * 1000000n; // 1000 USDC with 6 decimals
 
+// Server startup timestamp - used by frontend to detect server restarts
+const SERVER_STARTUP_TIMESTAMP = Date.now();
+console.log(`[Server] Startup timestamp: ${SERVER_STARTUP_TIMESTAMP} (${new Date(SERVER_STARTUP_TIMESTAMP).toISOString()})`)
+
 // Try to load EVM token address from deployment file if not set via env
 function getEvmTokenAddress(): string | undefined {
   if (process.env.EVM_TOKEN_ADDRESS) {
@@ -240,6 +244,7 @@ app.get("/api/health", (_req, res) => {
     bridgeEnabled: !!bridge,
     evmTokenAddress: EVM_TOKEN_ADDRESS || null,
     activeBridgeSessions: bridge?.getActiveSessionsCount() || 0,
+    serverStartupTimestamp: SERVER_STARTUP_TIMESTAMP,
   });
 });
 
