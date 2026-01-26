@@ -70,6 +70,7 @@ services:
     restart: unless-stopped
     networks:
       - aztec-network
+      - default  # For external internet access (Alchemy RPC)
 
   # Frontend served via nginx
   frontend:
@@ -96,4 +97,6 @@ services:
 
 networks:
   aztec-network:
+    driver: bridge
+  default:
     driver: bridge

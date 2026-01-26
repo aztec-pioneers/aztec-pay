@@ -285,28 +285,33 @@ export class AztecToEvmBridge {
     const account = privateKeyToAccount(this.evmPrivateKey);
     console.log(`[Bridge] Minter account: ${account.address}`);
 
+    // Use longer timeout for RPC requests (60s)
     const publicClient = createPublicClient({
       chain: baseSepolia,
-      transport: http(this.evmRpcUrl),
+      transport: http(this.evmRpcUrl, { timeout: 60000 }),
     });
 
-    // Check minter's ETH balance first
-    const ethBalance = await publicClient.getBalance({ address: account.address });
-    console.log(`[Bridge] Minter ETH balance: ${ethBalance} wei (${Number(ethBalance) / 1e18} ETH)`);
+    // Check minter's ETH balance (non-blocking - just a warning if it fails)
+    try {
+      const ethBalance = await publicClient.getBalance({ address: account.address });
+      console.log(`[Bridge] Minter ETH balance: ${ethBalance} wei (${Number(ethBalance) / 1e18} ETH)`);
 
-    if (ethBalance === 0n) {
-      throw new Error(`Minter account ${account.address} has no ETH for gas! Fund it with Base Sepolia ETH.`);
+      if (ethBalance === 0n) {
+        console.warn(`[Bridge] WARNING: Minter account ${account.address} appears to have no ETH for gas!`);
+      }
+    } catch (balanceError) {
+      console.warn(`[Bridge] Could not check ETH balance (will attempt mint anyway):`, balanceError);
     }
 
     const walletClient = createWalletClient({
       account,
       chain: baseSepolia,
-      transport: http(this.evmRpcUrl),
+      transport: http(this.evmRpcUrl, { timeout: 60000 }),
     });
 
     console.log(`[Bridge] Sending mint transaction...`);
 
-    // Add timeout to prevent hanging forever
+    // Add timeout to prevent hanging forever (90s to allow for RPC retries)
     const txPromise = walletClient.writeContract({
       address: this.evmTokenAddress,
       abi: BRIDGED_USDC_ABI,
@@ -315,7 +320,7 @@ export class AztecToEvmBridge {
     });
 
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Transaction submission timed out after 30s')), 30000);
+      setTimeout(() => reject(new Error('Transaction submission timed out after 90s')), 90000);
     });
 
     const hash = await Promise.race([txPromise, timeoutPromise]);
