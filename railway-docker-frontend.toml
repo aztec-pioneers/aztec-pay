@@ -1,0 +1,12 @@
+# Railway Docker Configuration - Frontend Service (Devnet)
+# Use this for Railway Docker deployment
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.frontend"
+
+[deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

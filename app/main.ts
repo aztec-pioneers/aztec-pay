@@ -161,7 +161,7 @@ async function registerTokenContract() {
     throw new Error(`Token contract not found at ${tokenAddress}`);
   }
 
-  tokenContract = TokenContract.at(address, wallet);
+  tokenContract = TokenContract.at(address, wallet.getWallet());
 }
 
 async function refreshBalance() {
@@ -269,20 +269,30 @@ async function generatePaymentLink() {
     const senderSalt = Fr.fromString(credentials.salt);
     await wallet.createSchnorrAccount(senderSecret, senderSalt);
 
-    console.log(`[Transfer] From: ${wallet.connectedAccount.toString()}`);
+    console.log(`[Transfer] From: ${wallet.connectedAccount!.toString()}`);
     console.log(`[Transfer] To: ${ephemeralAccount.address.toString()}`);
     console.log(`[Transfer] Amount: ${transferAmount}`);
 
-    // Using public_to_private since we're using public balance for now
+    // Get fee payment method for devnet
+    const feePaymentMethod = await wallet.getFeePaymentMethod();
+
+    // CRITICAL: Shield funds to ephemeral account (public_to_private)
+    // The ephemeral account is NOT deployed yet - we just created it locally to get the address
+    // The private notes will be waiting for the claimer when they deploy the account in their PXE
+    const txOptions: any = { from: wallet.connectedAccount! };
+    if (feePaymentMethod) {
+      txOptions.fee = { paymentMethod: feePaymentMethod };
+    }
+
     await tokenContract.methods
       .transfer_public_to_private(
-        wallet.connectedAccount,
+        wallet.connectedAccount!,
         ephemeralAccount.address,
         transferAmount,
         0n
       )
-      .send({ from: wallet.connectedAccount })
-      .wait({ timeout: 120 });
+      .send(txOptions)
+      .wait({ timeout: 180 });
 
     // Step 4: Create payment link
     // Include ephemeral address for verification and sender address for note discovery

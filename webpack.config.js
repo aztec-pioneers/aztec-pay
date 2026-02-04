@@ -41,7 +41,13 @@ export default (_, argv) => ({
       chunks: ['claim'],
       scriptLoading: 'module',
     }),
-    new Dotenv({ path: './.env' }),
+    new Dotenv({ path: './.env', systemvars: true }), // systemvars: true allows env vars to override .env
+    new webpack.DefinePlugin({
+      // Explicitly inject these env vars into the bundle
+      'process.env.API_BASE_URL': JSON.stringify(process.env.API_BASE_URL || ''),
+      'process.env.AZTEC_NODE_URL': JSON.stringify(process.env.AZTEC_NODE_URL || 'https://devnet-6.aztec-labs.com'),
+      'process.env.AZTEC_ENV': JSON.stringify(process.env.AZTEC_ENV || 'devnet'),
+    }),
     new webpack.ProvidePlugin({ Buffer: ['buffer', 'Buffer'] }),
   ],
   resolve: {

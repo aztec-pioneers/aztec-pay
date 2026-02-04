@@ -1,4 +1,8 @@
 {
-  "tokenAddress": "0x1ccc81552c99f8ad1610a30c898f91ec9bc17968bbe315925fb83345eaf0fd54",
-  "minterAddress": "0x2974756c17646ca139f79b5710b6aee11e2621ce65c882ffd593cfde58d94072"
+  "environment": "devnet",
+  "tokenAddress": "0x081ea877092578a41964192df9a43523d19e18189f146172e142d121a564ab0d",
+  "minterAddress": "0x1121d3b4694aa6e65f38d99e12df31febe7165f3872039d7732b28be8237b6f2",
+  "minterSecret": "0x2c5d878303bb6994183f14983a7d40bfdc4e2eb54f84ea31c619d3aeffdbf30c",
+  "minterSalt": "0x243bd632f948f8c2aaf4e69c8515d8c28e6766d1a7837e30e389cb77791bfc8d",
+  "nodeUrl": "https://devnet-6.aztec-labs.com"
 }

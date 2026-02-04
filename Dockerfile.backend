@@ -1,0 +1,58 @@
+# Railway Backend Service Dockerfile (Devnet)
+# Single-service backend that serves API and static frontend
+#
+# CRITICAL: This Dockerfile explicitly targets linux/amd64 for Railway compatibility
+# Building on Mac (ARM64) without --platform will cause GLIBCXX errors on Railway
+
+FROM --platform=linux/amd64 node:22-bookworm
+
+# Install latest libstdc++6 from Debian testing to get GLIBCXX_3.4.32
+# This is REQUIRED for @aztec/bb.js to work
+RUN echo "deb http://deb.debian.org/debian testing main" >> /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends -t testing \
+        libstdc++6 \
+        git \
+        curl \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files first (for better caching)
+COPY package.json yarn.lock* package-lock.json* ./
+
+# Install dependencies (ignore postinstall scripts to prevent husky errors)
+RUN npm install --ignore-scripts
+
+# Copy aztec-standards artifacts (required because postinstall was skipped)
+COPY docker-assets/aztec-standards-artifacts ./node_modules/@defi-wonderland/aztec-standards/artifacts
+COPY docker-assets/aztec-standards-target ./node_modules/@defi-wonderland/aztec-standards/target
+
+# Copy source code
+COPY . .
+
+# Build frontend (bakes env vars into the bundle)
+ARG AZTEC_NODE_URL=https://devnet-6.aztec-labs.com
+ARG API_BASE_URL=
+ARG AZTEC_ENV=devnet
+
+ENV AZTEC_ENV=${AZTEC_ENV}
+ENV AZTEC_NODE_URL=${AZTEC_NODE_URL}
+ENV API_BASE_URL=${API_BASE_URL}
+ENV NODE_ENV=production
+
+RUN npm run build:devnet
+
+# Expose port (Railway uses PORT env var)
+EXPOSE 3001
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:${PORT:-3001}/api/health || exit 1
+
+# Default environment
+ENV PORT=3001
+
+# Start command
+CMD ["npm", "run", "server:devnet:deploy"]

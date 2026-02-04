@@ -1,0 +1,62 @@
+# Railway Frontend Service Dockerfile (Devnet)
+# Serves static frontend files via nginx
+
+# Build stage
+FROM node:22-bookworm AS builder
+
+# Install git and update libstdc++6 for compatibility
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git libstdc++6 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json yarn.lock* package-lock.json* ./
+
+# Install dependencies (ignore postinstall scripts to prevent husky errors)
+RUN npm install --ignore-scripts
+
+# Copy aztec-standards artifacts (required because postinstall was skipped)
+COPY docker-assets/aztec-standards-artifacts ./node_modules/@defi-wonderland/aztec-standards/artifacts
+COPY docker-assets/aztec-standards-target ./node_modules/@defi-wonderland/aztec-standards/target
+
+# Copy source
+COPY . .
+
+# Build arguments (baked into frontend at build time)
+# These can be passed via --build-arg or will use defaults
+ARG AZTEC_NODE_URL=https://devnet-6.aztec-labs.com
+ARG API_BASE_URL
+ARG AZTEC_ENV=devnet
+
+# Set both ARG and ENV so webpack can pick them up
+# ENV makes them available to npm run build
+ENV AZTEC_ENV=${AZTEC_ENV}
+ENV AZTEC_NODE_URL=${AZTEC_NODE_URL}
+ENV API_BASE_URL=${API_BASE_URL}
+ENV NODE_ENV=production
+
+# Debug: print what we have
+RUN echo "Building with API_BASE_URL=${API_BASE_URL}"
+
+# Build frontend
+RUN npm run build:devnet
+
+# Production stage with nginx
+FROM nginx:alpine
+
+# Copy built files
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy nginx config (Railway version without backend proxy)
+COPY nginx-railway.conf /etc/nginx/conf.d/default.conf
+
+# Expose port
+EXPOSE 5173
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:5173/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -6,8 +6,15 @@
   "scripts": {
     "clean": "rm -rf app/dist",
     "dev": "webpack serve --mode development",
+    "dev:devnet": "AZTEC_ENV=devnet webpack serve --mode development",
     "build": "webpack --mode production",
+    "build:devnet": "AZTEC_ENV=devnet webpack --mode production",
     "server": "tsx src/ts/server.ts",
+    "server:devnet": "AZTEC_ENV=devnet tsx src/ts/server.ts",
+    "start": "npm run server:devnet",
+    "server:devnet:deploy": "AZTEC_ENV=devnet tsx src/ts/server-deploy.ts",
+    "deploy:devnet": "AZTEC_ENV=devnet tsx src/ts/deploy-devnet.ts",
+    "deploy:devnet:server": "AZTEC_ENV=devnet tsx src/ts/deploy-devnet-server.ts",
     "test": "vitest run",
     "test:bridge": "tsx src/ts/test-bridge.ts",
     "anvil": "anvil",
@@ -16,7 +23,11 @@
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "railway:backend": "docker build -f Dockerfile.backend -t aztec-pay-backend .",
+    "railway:frontend": "docker build -f Dockerfile.frontend -t aztec-pay-frontend .",
+    "railway:push:backend": "docker build -f Dockerfile.backend -t aztec-pay-backend . && railway up --service aztec-pay-backend",
+    "railway:push:frontend": "docker build -f Dockerfile.frontend -t aztec-pay-frontend . && railway up --service aztec-pay-frontend"
   },
   "dependencies": {
     "@aztec/accounts": "3.0.0-devnet.20251212",

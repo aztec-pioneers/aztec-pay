@@ -6,8 +6,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
-import { setupSandbox, getTestWallet, deployToken, mintTokensPrivate, mintTokensPublic } from "./utils.js";
+import { setupSandbox, getTestWallet, deployToken, mintTokensPublic } from "./utils.js";
 import { AztecToEvmBridge } from "./bridge.js";
+import { 
+  AZTEC_NODE_URL, 
+  IS_DEVNET, 
+  IS_LOCALNET, 
+  SPONSORED_FPC_ADDRESS,
+  logConfig 
+} from "./config.js";
 import type { TestWallet } from "@aztec/test-wallet/server";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,10 +50,34 @@ function getEvmTokenAddress(): string | undefined {
   return undefined;
 }
 
+// Try to load Aztec token address from deployment file or env
+function getAztecTokenAddress(): string | undefined {
+  if (process.env.TOKEN_ADDRESS) {
+    return process.env.TOKEN_ADDRESS;
+  }
+
+  // Try to read from deployment file
+  const deploymentPath = path.join(__dirname, "../../deployment.json");
+  try {
+    if (fs.existsSync(deploymentPath)) {
+      const data = JSON.parse(fs.readFileSync(deploymentPath, "utf-8"));
+      if (data.tokenAddress) {
+        console.log(`[Config] Loaded Aztec token address from deployment.json: ${data.tokenAddress}`);
+        return data.tokenAddress;
+      }
+    }
+  } catch (error) {
+    console.log("[Config] Could not read deployment.json:", error);
+  }
+
+  return undefined;
+}
+
 // Environment variables for bridge
 const EVM_TOKEN_ADDRESS = getEvmTokenAddress();
 const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY;
 const EVM_RPC_URL = process.env.EVM_RPC_URL || "https://sepolia.base.org";
+const TOKEN_ADDRESS = getAztecTokenAddress();
 
 let wallet: TestWallet;
 let token: TokenContract;
@@ -55,29 +86,114 @@ let bridge: AztecToEvmBridge | null = null;
 let isInitialized = false;
 
 async function initialize() {
-  console.log("Connecting to Aztec sandbox...");
+  // Log configuration
+  logConfig();
+
+  console.log(`[Server] Connecting to Aztec at ${AZTEC_NODE_URL}...`);
   const node = await setupSandbox();
 
-  console.log("Setting up wallet...");
+  console.log("[Server] Setting up wallet...");
   const result = await getTestWallet(node);
   wallet = result.wallet;
-  minterAddress = result.accounts[0];
 
-  console.log("Deploying USDC token...");
-  token = await deployToken(wallet, minterAddress, "USDC", "USDC", 6);
+  // For devnet, use existing deployed token and minter account
+  if (IS_DEVNET && TOKEN_ADDRESS) {
+    console.log(`[Server] Using existing token from deployment.json: ${TOKEN_ADDRESS}`);
+    token = await TokenContract.at(AztecAddress.fromString(TOKEN_ADDRESS), wallet);
+    
+    // Load minter account from deployment.json
+    const deploymentPath = path.join(__dirname, "../../deployment.json");
+    let minterSet = false;
+    
+    try {
+      if (fs.existsSync(deploymentPath)) {
+        const data = JSON.parse(fs.readFileSync(deploymentPath, "utf-8"));
+        
+        // Support both old (deployer) and new (minter) credential formats
+        const secretKey = data.minterSecret || data.deployerSecret;
+        const salt = data.minterSalt || data.deployerSalt;
+        const address = data.minterAddress || data.deployerAddress;
+        
+        if (secretKey && salt && address) {
+          const { Fr } = await import("@aztec/aztec.js/fields");
+          const { SponsoredFeePaymentMethod } = await import("@aztec/aztec.js/fee");
+          
+          console.log("[Server] Loading minter account for faucet...");
+          const secret = Fr.fromString(secretKey);
+          const saltFr = Fr.fromString(salt);
+          
+          const minterAccount = await wallet.createSchnorrAccount(secret, saltFr);
+          minterAddress = minterAccount.address;
+          
+          // Verify the address matches
+          if (minterAddress.toString() !== address) {
+            console.warn("[Server] Minter address mismatch! Expected:", address, "Got:", minterAddress.toString());
+            // Use the address from file anyway
+            minterAddress = AztecAddress.fromString(address);
+          }
+          
+          // Try to deploy the account on devnet (may already be deployed)
+          console.log("[Server] Ensuring minter account is deployed...");
+          try {
+            const sponsoredFpcAddress = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
+            const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
+            
+            const deployMethod = await minterAccount.getDeployMethod();
+            await deployMethod
+              .send({ from: AztecAddress.ZERO, fee: { paymentMethod } })
+              .wait();
+            console.log("[Server] Minter account deployed");
+          } catch (deployError: any) {
+            // Account might already be deployed
+            if (deployError.message?.includes("already deployed") || deployError.message?.includes("nullifier") || deployError.message?.includes("existing")) {
+              console.log("[Server] Minter account already deployed");
+            } else {
+              throw deployError;
+            }
+          }
+          
+          minterSet = true;
+          console.log(`[Server] Using minter account: ${minterAddress.toString()}`);
+        }
+      }
+    } catch (error: any) {
+      console.error("[Server] Failed to load minter account:", error.message);
+    }
+    
+    // Fallback to first test account
+    if (!minterSet) {
+      minterAddress = result.accounts[0];
+      console.warn("[Server] Warning: Using test account for minter - faucet will likely fail!");
+      console.warn("[Server] Please run: yarn deploy:devnet:server");
+    }
+  } else {
+    // Localnet: deploy new token
+    minterAddress = result.accounts[0];
+    console.log("[Server] Deploying new USDC token...");
+    token = await deployToken(wallet, minterAddress, "USDC", "USDC", 6);
+    
+    // Save deployment info for localnet
+    const deployment = {
+      environment: 'localnet',
+      tokenAddress: token.address.toString(),
+      minterAddress: minterAddress.toString(),
+    };
+    fs.writeFileSync("deployment.json", JSON.stringify(deployment, null, 2));
+    console.log("[Server] Deployment saved to deployment.json");
+  }
 
-  console.log(`Server initialized with token at ${token.address.toString()}`);
-  console.log(`Minter address: ${minterAddress.toString()}`);
+  console.log(`[Server] Token initialized at ${token.address.toString()}`);
+  console.log(`[Server] Minter address: ${minterAddress.toString()}`);
 
   // Initialize bridge if EVM token address and private key are set
   if (EVM_TOKEN_ADDRESS && EVM_PRIVATE_KEY) {
-    console.log("Initializing Aztec -> EVM bridge...");
+    console.log("[Server] Initializing Aztec -> EVM bridge...");
     console.log(`  EVM RPC: ${EVM_RPC_URL}`);
     bridge = new AztecToEvmBridge(wallet, token, EVM_TOKEN_ADDRESS, EVM_PRIVATE_KEY, EVM_RPC_URL);
     await bridge.start();
-    console.log(`Bridge initialized with EVM token at ${EVM_TOKEN_ADDRESS}`);
+    console.log(`[Server] Bridge initialized with EVM token at ${EVM_TOKEN_ADDRESS}`);
   } else {
-    console.log("Bridge disabled - set EVM_TOKEN_ADDRESS and EVM_PRIVATE_KEY to enable");
+    console.log("[Server] Bridge disabled - set EVM_TOKEN_ADDRESS and EVM_PRIVATE_KEY to enable");
   }
 
   isInitialized = true;
@@ -105,7 +221,7 @@ app.post("/api/faucet", async (req, res) => {
     console.log(`[Faucet] Registering recipient ${address}...`);
     await wallet.registerSender(recipient);
 
-    // Using public mint for now to debug - private note discovery seems broken
+    // Use public mint for both localnet and devnet
     console.log(`[Faucet] Minting 1000 USDC (PUBLIC) to ${address}...`);
     await mintTokensPublic(token, minterAddress, recipient, FAUCET_AMOUNT);
     console.log(`[Faucet] Mint complete to ${address}`);
@@ -220,6 +336,7 @@ app.post("/api/test/transfer-private", async (req, res) => {
 
     // First mint to minter's private balance, then transfer
     // This simulates a user sending private tokens
+    const { mintTokensPrivate, transferPrivate } = await import("./utils.js");
     await mintTokensPrivate(token, minterAddress, recipient, transferAmount);
 
     console.log(`[Test] Private transfer complete to ${to}`);
@@ -245,17 +362,19 @@ app.get("/api/health", (_req, res) => {
     evmTokenAddress: EVM_TOKEN_ADDRESS || null,
     activeBridgeSessions: bridge?.getActiveSessionsCount() || 0,
     serverStartupTimestamp: SERVER_STARTUP_TIMESTAMP,
+    environment: IS_DEVNET ? 'devnet' : 'localnet',
+    nodeUrl: AZTEC_NODE_URL,
   });
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-  console.log("Initializing Aztec connection...");
+  console.log(`[Server] Running at http://localhost:${PORT}`);
+  console.log("[Server] Initializing Aztec connection...");
 
   initialize()
     .then(() => {
-      console.log("Server fully initialized and ready!");
+      console.log("[Server] Fully initialized and ready!");
       console.log("Endpoints:");
       console.log("  POST /api/faucet - Get test USDC");
       console.log("  POST /api/bridge/initiate - Start Aztec->EVM bridge");
@@ -263,7 +382,7 @@ app.listen(PORT, () => {
       console.log("  GET  /api/health - Server health check");
     })
     .catch((err) => {
-      console.error("Failed to initialize server:", err);
+      console.error("[Server] Failed to initialize:", err);
       process.exit(1);
     });
 });

@@ -36,7 +36,7 @@ interface PaymentData {
   tokenAddress: string;
 }
 
-// Configuration
+// Configuration - use environment variables or defaults
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const API_BASE_URL = process.env.API_BASE_URL || ''; // Empty string = relative URLs (proxied by nginx)
 const SERVER_TIMESTAMP_KEY = 'aztec-pay-server-timestamp';
@@ -263,7 +263,7 @@ async function registerTokenContract() {
     throw new Error(`Token contract not found at ${paymentData.tokenAddress}`);
   }
 
-  tokenContract = TokenContract.at(address, wallet);
+  tokenContract = TokenContract.at(address, wallet.getWallet());
 }
 
 async function checkEphemeralBalance(): Promise<bigint> {
@@ -287,7 +287,17 @@ async function checkEphemeralBalance(): Promise<bigint> {
     console.log('[Claim] Registering ephemeral address as sender...');
     await wallet.registerSender(ephemeralAddress);
 
-    // Sync private state to discover notes
+    // CRITICAL: Sync PXE to discover the ephemeral account's signing key note
+    // This note was created when the account was deployed during link generation
+    console.log('[Claim] Syncing PXE to discover signing key note...');
+    try {
+      await wallet.syncPXE();
+      console.log('[Claim] PXE sync completed');
+    } catch (e) {
+      console.warn('[Claim] PXE sync warning:', e);
+    }
+
+    // Also sync token private state
     console.log('[Claim] Calling sync_private_state...');
     try {
       await tokenContract.methods
@@ -470,14 +480,40 @@ async function handleClaim() {
       throw new Error('Payment has no balance to claim');
     }
 
-    // Step 3: Deploy ephemeral account (needed to send transactions)
-    updateProcessingStatus('Deploying claim account...');
-    console.log('[Claim] Deploying ephemeral account to send transaction...');
+    // Step 3: Setup ephemeral account (deploy if needed, create signing key note in THIS PXE)
+    updateProcessingStatus('Setting up claim account...');
+    console.log('[Claim] Setting up ephemeral account...');
 
-    // Re-create with deploy=true
     const secret = Fr.fromString(paymentData.secret);
     const salt = Fr.fromString(paymentData.salt);
-    await wallet.createSchnorrAccount(secret, salt, true);
+    
+    // Step 3: Deploy ephemeral account (if needed) and ensure signing key is in our PXE
+    // Check if account is already deployed on-chain
+    const existingInstance = await wallet.getContractInstanceFromNode(ephemeralAddress);
+    
+    // CRITICAL: Register the ephemeral address BEFORE deploying so PXE discovers signing key note
+    console.log('[Claim] Registering ephemeral address for note discovery...');
+    await wallet.registerSender(ephemeralAddress);
+    
+    if (existingInstance) {
+      console.log('[Claim] Account already deployed on-chain, deploying to get signing key in PXE...');
+    } else {
+      console.log('[Claim] Account not yet deployed, will deploy fresh...');
+    }
+    
+    // Create/deploy the account - this creates/gets the signing key note in claimer's PXE
+    const ephemeralAccount = await wallet.createSchnorrAccount(secret, salt, true);
+    console.log('[Claim] Account ready at:', ephemeralAccount.address.toString());
+    
+    // CRITICAL: Wait and sync multiple times to ensure signing key note is discovered
+    console.log('[Claim] Waiting for signing key note to be discovered...');
+    await sleep(3000);
+    await wallet.syncPXE();
+    await sleep(2000);
+    
+    // Also sync to discover shielded token notes
+    console.log('[Claim] Syncing to discover shielded token notes...');
+    await wallet.syncPXE();
 
     // Step 4: Transfer from ephemeral account to bridge deposit address
     updateProcessingStatus('Transferring to bridge...');
@@ -486,11 +522,20 @@ async function handleClaim() {
     // Register the bridge deposit address so we can send to it
     await wallet.registerSender(bridgeDepositAddress);
 
-    // Send transfer with error handling for IDB/nullifier issues
+    // Get fee payment method for devnet
+    const feePaymentMethod = await wallet.getFeePaymentMethod();
+
+    // Transfer private notes to bridge
+    const txOptions: any = { from: ephemeralAddress };
+    if (feePaymentMethod) {
+      txOptions.fee = { paymentMethod: feePaymentMethod };
+    }
+
+    // Send private transfer
     try {
       const tx = tokenContract.methods
         .transfer_private_to_private(ephemeralAddress, bridgeDepositAddress, balance, 0n)
-        .send({ from: ephemeralAddress });
+        .send(txOptions);
 
       console.log('[Claim] Transaction sent, waiting for confirmation...');
       await tx.wait({ timeout: 180 });
