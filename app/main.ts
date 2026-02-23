@@ -32,6 +32,7 @@ const mainApp = document.getElementById('main-app')!;
 const statusText = document.getElementById('status-text')!;
 const balanceDisplay = document.getElementById('balance-display')!;
 const faucetBtn = document.getElementById('faucet-btn')!;
+const faucetStatus = document.getElementById('faucet-status')!;
 const amountInput = document.getElementById('amount-input') as HTMLInputElement;
 const messageInput = document.getElementById('message-input') as HTMLTextAreaElement;
 const messageCharCount = document.getElementById('message-char-count')!;
@@ -67,7 +68,7 @@ async function initialize() {
     tokenAddress = healthData.tokenAddress;
 
     // Step 3: Initialize Aztec wallet in browser
-    updateStatus('Initializing Aztec client...');
+    updateStatus('Initializing Aztec client... ⏱️ This may take 1-2 minutes on first load');
     wallet = await EmbeddedWallet.initialize(AZTEC_NODE_URL);
 
     // Step 4: Register token contract
@@ -79,7 +80,7 @@ async function initialize() {
     let account = await wallet.connectExistingAccount();
 
     if (!account) {
-      updateStatus('Creating new account...');
+      updateStatus('Creating new account... ⏱️ This takes 2-3 minutes (ZK proof generation)');
       account = await wallet.createAccountAndConnect();
     }
 
@@ -200,7 +201,7 @@ async function faucet() {
   if (!wallet.connectedAccount) return;
 
   faucetBtn.setAttribute('disabled', 'true');
-  faucetBtn.textContent = '...';
+  faucetStatus.textContent = '⏱️ 30-60 sec';
 
   try {
     console.log('[Faucet] Requesting mint for:', wallet.connectedAccount.toString());
@@ -217,11 +218,15 @@ async function faucet() {
     }
 
     await refreshBalance();
+    faucetStatus.textContent = '✓ Minted 1000 USDC';
+    setTimeout(() => {
+      faucetStatus.textContent = '';
+    }, 3000);
   } catch (error) {
     showError(`Faucet failed: ${error instanceof Error ? error.message : String(error)}`);
+    faucetStatus.textContent = '';
   } finally {
     faucetBtn.removeAttribute('disabled');
-    faucetBtn.textContent = '+';
   }
 }
 
@@ -245,7 +250,7 @@ async function generatePaymentLink() {
   }
 
   generateBtn.setAttribute('disabled', 'true');
-  generateBtn.textContent = 'Generating...';
+  generateBtn.textContent = 'Generating... ⏱️ 1-2 minutes';
   hideError();
 
   try {

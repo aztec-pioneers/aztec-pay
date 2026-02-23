@@ -147,7 +147,7 @@ async function initialize() {
     }
 
     // Initialize Aztec wallet in browser
-    updateStatus('Initializing Aztec client...');
+    updateStatus('Initializing Aztec client... ⏱️ This may take 1-2 minutes on first load');
     wallet = await EmbeddedWallet.initialize(AZTEC_NODE_URL);
 
     // Register token contract
@@ -178,7 +178,7 @@ async function initialize() {
     }
 
     // Wait for PXE to sync with the node
-    updateStatus('Syncing with network...');
+    updateStatus('Syncing with network... ⏱️ This may take 30-60 seconds');
     console.log('[Claim] Checking sync status...');
 
     try {
@@ -449,7 +449,7 @@ async function handleClaim() {
   try {
     // Step 1: Initiate bridge session
     // CRITICAL: Pass the ephemeral address as the sender so the bridge can discover notes
-    updateProcessingStatus('Initiating bridge session...');
+    updateProcessingStatus('Initiating bridge session... (this takes a few seconds)');
     console.log('[Claim] Initiating bridge for EVM address:', evmAddress);
     console.log('[Claim] Sender address (ephemeral):', ephemeralAddress.toString());
 
@@ -472,7 +472,7 @@ async function handleClaim() {
     console.log('[Claim] Bridge deposit address:', bridgeDepositAddress.toString());
 
     // Step 2: Get current balance
-    updateProcessingStatus('Checking payment balance...');
+    updateProcessingStatus('Checking payment balance... (syncing with Aztec network)');
     const balance = await checkEphemeralBalance();
     console.log('[Claim] Balance to transfer:', balance);
 
@@ -481,7 +481,7 @@ async function handleClaim() {
     }
 
     // Step 3: Setup ephemeral account (deploy if needed, create signing key note in THIS PXE)
-    updateProcessingStatus('Setting up claim account...');
+    updateProcessingStatus('Setting up claim account... ⏱️ This takes 2-3 minutes (ZK proof generation)');
     console.log('[Claim] Setting up ephemeral account...');
 
     const secret = Fr.fromString(paymentData.secret);
@@ -516,7 +516,7 @@ async function handleClaim() {
     await wallet.syncPXE();
 
     // Step 4: Transfer from ephemeral account to bridge deposit address
-    updateProcessingStatus('Transferring to bridge...');
+    updateProcessingStatus('Transferring to bridge... ⏱️ This takes 1-2 minutes (ZK proof generation)');
     console.log('[Claim] Transferring', balance, 'from ephemeral to bridge deposit');
 
     // Register the bridge deposit address so we can send to it
@@ -571,7 +571,7 @@ async function handleClaim() {
     }
 
     // Step 4: Wait for bridge to process
-    updateProcessingStatus('Waiting for bridge to mint on Base Sepolia...');
+    updateProcessingStatus('Waiting for bridge to mint on Base Sepolia... ⏱️ This takes 2-3 minutes');
     console.log('[Claim] Waiting for bridge to detect deposit and mint...');
 
     // Poll for bridge completion (session will be removed when complete)

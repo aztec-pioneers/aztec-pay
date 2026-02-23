@@ -185,6 +185,16 @@ body {
   cursor: not-allowed;
 }
 
+.faucet-status {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* Container */
 .container {
   flex: 1;
