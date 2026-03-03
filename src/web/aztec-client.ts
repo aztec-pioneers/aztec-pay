@@ -9,7 +9,7 @@
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
+import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js";
 import { 
   AZTEC_NODE_URL, 
   IS_DEVNET, 
@@ -38,16 +38,9 @@ export async function initializeAztec(): Promise<void> {
 
   console.log("[Aztec] Creating wallet...");
   
-  // Use appropriate wallet creation based on environment
-  if (IS_DEVNET) {
-    // Devnet: Use lazy-loaded TestWallet with proving enabled
-    const { TestWallet } = await import("@aztec/test-wallet/client/lazy");
-    wallet = await TestWallet.create(node, { proverEnabled: true });
-  } else {
-    // Localnet: Use bundle TestWallet with proving disabled
-    const { TestWallet } = await import("@aztec/test-wallet/client/bundle");
-    wallet = await TestWallet.create(node, { proverEnabled: false });
-  }
+  // Use EmbeddedWallet with appropriate proving settings
+  const { EmbeddedWallet } = await import("@aztec/wallets/embedded");
+  wallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: IS_DEVNET } });
 
   // Register SponsoredFPC on devnet
   if (IS_DEVNET && SPONSORED_FPC_ADDRESS) {
@@ -130,8 +123,7 @@ export async function createAccount(secretHex?: string, saltHex?: string, deploy
     
     const deployMethod = await account.getDeployMethod();
     await deployMethod
-      .send({ from: AztecAddress.ZERO, fee: { paymentMethod } })
-      .wait();
+      .send({ from: AztecAddress.ZERO, fee: { paymentMethod } });
     console.log("[Aztec] Account deployed successfully");
   }
 
@@ -161,19 +153,18 @@ export async function deployAccount(secretHex: string, saltHex: string): Promise
   const salt = Fr.fromString(saltHex);
 
   console.log("[Aztec] Deploying account to devnet...");
-  
+
   const account = await wallet.createSchnorrAccount(secret, salt);
   const { SponsoredFeePaymentMethod } = await import("@aztec/aztec.js/fee");
   const { AztecAddress } = await import("@aztec/aztec.js/addresses");
-  
+
   const sponsoredFpcAddress = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
   const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
-  
+
   const deployMethod = await account.getDeployMethod();
   await deployMethod
-    .send({ from: AztecAddress.ZERO, fee: { paymentMethod } })
-    .wait();
-  
+    .send({ from: AztecAddress.ZERO, fee: { paymentMethod } });
+
   console.log("[Aztec] Account deployed successfully");
 }
 
@@ -220,13 +211,11 @@ export async function transferPrivate(
     const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
     
     await token.methods.transfer_private_to_private(from, to, amount, 0n)
-      .send({ from, fee: { paymentMethod } })
-      .wait();
+      .send({ from, fee: { paymentMethod } });
   } else {
     // Localnet: no fees needed
     await token.methods.transfer_private_to_private(from, to, amount, 0n)
-      .send({ from })
-      .wait();
+      .send({ from });
   }
   
   console.log("[Aztec] Transfer complete");

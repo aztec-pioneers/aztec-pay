@@ -1,9 +1,9 @@
 import { createAztecNodeClient, type AztecNode } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { TestWallet } from "@aztec/test-wallet/server";
+import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { getInitialTestAccountsData } from "@aztec/accounts/testing";
-import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
+import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js";
 import { AZTEC_NODE_URL, IS_DEVNET, SPONSORED_FPC_ADDRESS } from "./config.js";
 
 /**
@@ -19,12 +19,12 @@ export async function setupSandbox(): Promise<AztecNode> {
  * Returns a single wallet with multiple accounts registered
  */
 export async function getTestWallet(node: AztecNode): Promise<{
-  wallet: TestWallet;
+  wallet: EmbeddedWallet;
   accounts: AztecAddress[];
 }> {
   // Use appropriate proving setting based on environment
   const proverEnabled = IS_DEVNET;
-  const wallet = await TestWallet.create(node, { proverEnabled });
+  const wallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled } });
   
   const accounts: AztecAddress[] = [];
 
@@ -53,7 +53,7 @@ export async function getTestWallet(node: AztecNode): Promise<{
  * Deploy a TokenContract (USDC) for testing
  */
 export async function deployToken(
-  wallet: TestWallet,
+  wallet: EmbeddedWallet,
   admin: AztecAddress,
   name: string = "USDC",
   symbol: string = "USDC",
@@ -67,8 +67,7 @@ export async function deployToken(
     admin, // minter
     admin  // upgrade_authority
   )
-    .send({ from: admin })
-    .deployed();
+    .send({ from: admin });
   return token;
 }
 
@@ -90,11 +89,10 @@ export async function mintTokensPrivate(
     const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
     
     await token.methods.mint_to_private(to, amount)
-      .send({ from, fee: { paymentMethod } })
-      .wait();
+      .send({ from, fee: { paymentMethod } });
   } else {
     // On localnet, no fees needed
-    await token.methods.mint_to_private(to, amount).send({ from }).wait();
+    await token.methods.mint_to_private(to, amount).send({ from });
   }
 }
 
@@ -116,11 +114,10 @@ export async function mintTokensPublic(
     const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
     
     await token.methods.mint_to_public(to, amount)
-      .send({ from, fee: { paymentMethod } })
-      .wait();
+      .send({ from, fee: { paymentMethod } });
   } else {
     // On localnet, no fees needed
-    await token.methods.mint_to_public(to, amount).send({ from }).wait();
+    await token.methods.mint_to_public(to, amount).send({ from });
   }
 }
 
@@ -153,12 +150,11 @@ export async function transferPrivate(
     const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
     
     await token.methods.transfer_private_to_private(from, to, amount, 0n)
-      .send({ from, fee: { paymentMethod } })
-      .wait();
+      .send({ from, fee: { paymentMethod } });
   } else {
     // On localnet, no fees needed
-    await token.methods.transfer_private_to_private(from, to, amount, 0n).send({ from }).wait();
+    await token.methods.transfer_private_to_private(from, to, amount, 0n).send({ from });
   }
 }
 
-export { Fr, AztecAddress, TestWallet, TokenContract };
+export { Fr, AztecAddress, EmbeddedWallet, TokenContract };

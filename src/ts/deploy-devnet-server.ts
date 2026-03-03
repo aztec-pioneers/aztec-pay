@@ -7,12 +7,12 @@
  */
 
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import { TestWallet } from "@aztec/test-wallet/server";
+import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import { Fr } from "@aztec/foundation/curves/bn254";
 import { GrumpkinScalar } from "@aztec/foundation/curves/grumpkin";
-import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
+import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js";
 import { SponsoredFPCContract } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { writeFileSync } from "fs";
 import "dotenv/config";
@@ -44,7 +44,7 @@ async function main() {
   
   // Create wallet
   console.log("\n👤 Creating devnet wallet...");
-  const wallet = await TestWallet.create(node, { proverEnabled: true });
+  const wallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: true } });
   console.log("✅ Wallet created");
 
   // Register SponsoredFPC
@@ -74,16 +74,18 @@ async function main() {
   // Deploy the account
   console.log("\n⛽ Deploying minter account...");
   const deployAccountMethod = await accountManager.getDeployMethod();
-  const accountTx = await deployAccountMethod
-    .send({ from: AztecAddress.ZERO, fee: { paymentMethod: sponsoredPaymentMethod } })
-    .wait();
-  console.log(`✅ Account deployed in block ${accountTx.blockNumber}`);
+  await deployAccountMethod
+    .send({ from: AztecAddress.ZERO, fee: { paymentMethod: sponsoredPaymentMethod } });
+  console.log("✅ Account deployed");
 
   // Deploy the TokenContract
   console.log("\n📦 Deploying USDC TokenContract...");
   
   try {
-    const deployTx = TokenContract.deployWithOpts(
+    console.log("\n⏳ Deploying token contract...");
+    console.log("   Waiting for transaction to be mined...");
+
+    const token = await TokenContract.deployWithOpts(
       { wallet, method: "constructor_with_minter" },
       "USDC",
       "USDC",
@@ -95,12 +97,6 @@ async function main() {
         from: minterAddress,
         fee: { paymentMethod: sponsoredPaymentMethod },
       });
-
-    const txHash = await deployTx.getTxHash();
-    console.log(`\n⏳ Deployment transaction sent: ${txHash}`);
-    console.log("   Waiting for transaction to be mined...");
-
-    const token = await deployTx.deployed();
     
     console.log("\n" + "=".repeat(60));
     console.log("✅ Token deployed successfully!");
@@ -118,7 +114,7 @@ async function main() {
       minterSalt: salt.toString(),
       nodeUrl: DEVNET_NODE_URL,
       sponsoredFpcAddress: SPONSORED_FPC_ADDRESS,
-      deploymentBlock: accountTx.blockNumber,
+      deployedAt: new Date().toISOString(),
     };
 
     writeFileSync("deployment.json", JSON.stringify(deployment, null, 2));

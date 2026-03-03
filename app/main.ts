@@ -11,7 +11,7 @@
 
 import './style.css';
 import { AztecAddress, Fr, EmbeddedWallet } from './embedded-wallet';
-import { TokenContract } from '@defi-wonderland/aztec-standards/artifacts/Token';
+import { TokenContract } from '@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js';
 import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 
 // Configuration
@@ -174,13 +174,7 @@ async function refreshBalance() {
 
     // Register the account as a sender so PXE tracks notes for it
     console.log('[Balance] Registering sender...');
-    await wallet.registerSender(wallet.connectedAccount);
-
-    // Sync private state to discover any new notes (e.g., from mints)
-    console.log('[Balance] Syncing private state...');
-    await tokenContract.methods
-      .sync_private_state()
-      .simulate({ from: wallet.connectedAccount });
+    await wallet.registerSender(wallet.connectedAccount, 'self');
 
     // Query public balance (using public mint for debugging)
     console.log('[Balance] Querying PUBLIC balance...');
@@ -296,8 +290,7 @@ async function generatePaymentLink() {
         transferAmount,
         0n
       )
-      .send(txOptions)
-      .wait({ timeout: 180 });
+      .send(txOptions);
 
     // Step 4: Create payment link
     // Include ephemeral address for verification and sender address for note discovery

@@ -43,7 +43,12 @@
       "Bash(docker builder prune:*)",
       "Bash(docker version:*)",
       "Bash(docker system prune:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(npm i:*)",
+      "Bash(node:*)",
+      "Bash(AZTEC_ENV=localnet npm run:*)",
+      "Bash(AZTEC_ENV=localnet AZTEC_NODE_URL=http://localhost:8080 npm run:*)",
+      "Bash(python3:*)"
     ]
   }
 }

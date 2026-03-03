@@ -8,7 +8,7 @@
 import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
 import { Fr } from '@aztec/aztec.js/fields';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { TokenContract } from '@defi-wonderland/aztec-standards/artifacts/Token';
+import { TokenContract } from '@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js';
 import type { ContractInstance } from '@aztec/stdlib/contract';
 import type { ContractArtifact } from '@aztec/stdlib/abi';
 
@@ -16,6 +16,10 @@ import type { ContractArtifact } from '@aztec/stdlib/abi';
 const AZTEC_ENV = process.env.AZTEC_ENV || 'localnet';
 const IS_DEVNET = AZTEC_ENV === 'devnet';
 const SPONSORED_FPC_ADDRESS = process.env.SPONSORED_FPC_ADDRESS || '0x1586f476995be97f07ebd415340a14be48dc28c6c661cc6bdddb80ae790caa4e';
+
+// Sandbox pre-funded test account (first account — already deployed with fee juice on localnet)
+const TEST_ACCOUNT_SECRET = '0x2153536ff6628eee01cf4024889ff977a18d9fa61d0e414422f7681cf085c281';
+const TEST_ACCOUNT_SALT = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
 export { Fr, AztecAddress };
 
@@ -63,19 +67,10 @@ export class EmbeddedWallet {
 
     const node = createAztecNodeClient(nodeUrl);
 
-    // Create appropriate wallet based on environment
-    let wallet: any;
-    if (IS_DEVNET) {
-      // Devnet: Use lazy-loaded TestWallet with proving enabled
-      const { TestWallet } = await import('@aztec/test-wallet/client/lazy');
-      wallet = await TestWallet.create(node, { proverEnabled: true });
-      console.log('[EmbeddedWallet] Devnet mode - proving enabled');
-    } else {
-      // Localnet: Use bundle TestWallet with proving disabled
-      const { TestWallet } = await import('@aztec/test-wallet/client/bundle');
-      wallet = await TestWallet.create(node, { proverEnabled: false });
-      console.log('[EmbeddedWallet] Localnet mode - proving disabled');
-    }
+    // Create wallet with appropriate proving settings
+    const { EmbeddedWallet: AztecWallet } = await import('@aztec/wallets/embedded');
+    const wallet = await AztecWallet.create(node, { pxeConfig: { proverEnabled: IS_DEVNET } });
+    console.log(`[EmbeddedWallet] ${IS_DEVNET ? 'Devnet' : 'Localnet'} mode - proving ${IS_DEVNET ? 'enabled' : 'disabled'}`);
 
     const embeddedWallet = new EmbeddedWallet(node, wallet);
 
@@ -192,11 +187,25 @@ export class EmbeddedWallet {
   async createAccountAndConnect(): Promise<AztecAddress> {
     console.log('[EmbeddedWallet] Creating new account...');
 
-    const secret = Fr.random();
-    const salt = Fr.random();
+    let secret: Fr;
+    let salt: Fr;
+    let deploy: boolean;
+
+    if (IS_DEVNET) {
+      // Devnet: create random account and deploy with sponsored fees
+      secret = Fr.random();
+      salt = Fr.random();
+      deploy = true;
+    } else {
+      // Localnet: use sandbox's pre-funded test account (already deployed)
+      console.log('[EmbeddedWallet] Using sandbox test account for localnet');
+      secret = Fr.fromString(TEST_ACCOUNT_SECRET);
+      salt = Fr.fromString(TEST_ACCOUNT_SALT);
+      deploy = false;
+    }
 
     // Create the account
-    const accountInfo = await this.createSchnorrAccount(secret, salt, IS_DEVNET);
+    const accountInfo = await this.createSchnorrAccount(secret, salt, deploy);
 
     // Save credentials
     this.saveCredentials({
@@ -240,20 +249,23 @@ export class EmbeddedWallet {
     // Always cache the account info
     this.accounts.set(cacheKey, accountInfo);
 
-    // Deploy account if requested (required for devnet)
-    if (deploy && IS_DEVNET) {
-      console.log('[EmbeddedWallet] Deploying account to devnet (this may take 1-2 minutes)...');
-      const { SponsoredFeePaymentMethod } = await import('@aztec/aztec.js/fee');
-      
-      const sponsoredFpcAddress = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
-      const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
-      
+    // Deploy account if requested (required for signing transactions)
+    if (deploy) {
+      console.log('[EmbeddedWallet] Deploying account (this may take 1-2 minutes)...');
+
       const deployMethod = await account.getDeployMethod();
-      
+
       try {
-        await deployMethod
-          .send({ from: AztecAddress.ZERO, fee: { paymentMethod } })
-          .wait();
+        if (IS_DEVNET) {
+          // Devnet: use sponsored fees
+          const { SponsoredFeePaymentMethod } = await import('@aztec/aztec.js/fee');
+          const sponsoredFpcAddress = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
+          const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
+          await deployMethod.send({ from: AztecAddress.ZERO, fee: { paymentMethod } });
+        } else {
+          // Localnet: no fees needed
+          await deployMethod.send({ from: AztecAddress.ZERO });
+        }
         console.log('[EmbeddedWallet] Account deployed successfully');
       } catch (deployError: any) {
         // If deployment fails because account already exists, that's OK
@@ -263,12 +275,11 @@ export class EmbeddedWallet {
           console.warn('[EmbeddedWallet] Deployment error (may be already deployed):', deployError);
         }
       }
-      
+
       // CRITICAL: Register the account address so PXE discovers notes addressed to it
-      // The account deployment creates a signing key note that must be in our PXE before we can sign
       console.log('[EmbeddedWallet] Registering account for note discovery:', account.address.toString());
-      await this.wallet.registerSender(account.address);
-      
+      await this.wallet.registerSender(account.address, 'deployed-account');
+
       // CRITICAL: Sync PXE to discover the signing key note that was just created
       console.log('[EmbeddedWallet] Syncing PXE to discover signing key note...');
       await this.syncPXE();
@@ -302,8 +313,8 @@ export class EmbeddedWallet {
   /**
    * Register a sender address for note discovery
    */
-  async registerSender(address: AztecAddress): Promise<void> {
-    await this.wallet.registerSender(address);
+  async registerSender(address: AztecAddress, alias: string = 'sender'): Promise<void> {
+    await this.wallet.registerSender(address, alias);
   }
 
   /**
@@ -356,7 +367,7 @@ export class EmbeddedWallet {
   async syncAccount(address: AztecAddress): Promise<any> {
     try {
       // Register as sender first
-      await this.wallet.registerSender(address);
+      await this.wallet.registerSender(address, 'sync-account');
       
       // Try to get PXE and sync
       const pxe = (this.wallet as any).pxe;

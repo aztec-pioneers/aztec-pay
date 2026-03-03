@@ -7,14 +7,14 @@ import {
   mintTokensPrivate,
   getPrivateBalance,
   AztecAddress,
-  TestWallet,
+  EmbeddedWallet,
   TokenContract,
   Fr,
 } from "./utils.js";
 
 describe("Token Transfer", () => {
   let node: AztecNode;
-  let wallet: TestWallet;
+  let wallet: EmbeddedWallet;
   let accounts: AztecAddress[];
   let usdc: TokenContract;
 
@@ -86,8 +86,7 @@ describe("Token Transfer", () => {
     console.log(`[Test] Transferring ${TRANSFER_AMOUNT} from A to ephemeral B...`);
     await usdc.methods
       .transfer_private_to_private(addressA, addressB, TRANSFER_AMOUNT, 0n)
-      .send({ from: addressA })
-      .wait();
+      .send({ from: addressA });
 
     console.log(`[Test] Transfer complete, checking balances...`);
 
@@ -126,9 +125,6 @@ describe("Token Transfer", () => {
     // Now try to read the balance
     console.log(`[Test] Checking balance from reconstructed account...`);
 
-    // Sync private state first (like the browser does)
-    await usdc.methods.sync_private_state().simulate({ from: reconstructedAccount.address });
-
     const balance = await getPrivateBalance(usdc, reconstructedAccount.address, reconstructedAccount.address);
     console.log(`[Test] Balance from reconstructed account: ${balance}`);
 
@@ -141,10 +137,10 @@ describe("Token Transfer", () => {
     // and try to discover the notes. This simulates what happens when
     // a different browser (claim page) tries to access the funds.
 
-    console.log(`[Test] Creating a NEW TestWallet to simulate different browser/PXE...`);
+    console.log(`[Test] Creating a NEW EmbeddedWallet to simulate different browser/PXE...`);
 
     // Create a brand new wallet (simulating a different browser)
-    const newWallet = await TestWallet.create(node, { proverEnabled: false });
+    const newWallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: false } });
 
     // Register the token contract in the new wallet
     const tokenInstance = await node.getContract(usdc.address);
@@ -166,15 +162,11 @@ describe("Token Transfer", () => {
     // IMPORTANT: Register the ORIGINAL SENDER (addressA) in the new wallet
     // This might help the PXE know to look for tags from that sender
     console.log(`[Test] Registering ORIGINAL sender (addressA) in new wallet...`);
-    await newWallet.registerSender(addressA);
+    await newWallet.registerSender(addressA, 'sender-A');
 
     // Also register the ephemeral address itself
     console.log(`[Test] Registering ephemeral address in new wallet...`);
-    await newWallet.registerSender(reconstructedAccount.address);
-
-    // Sync private state
-    console.log(`[Test] Syncing private state in new wallet...`);
-    await tokenInNewWallet.methods.sync_private_state().simulate({ from: reconstructedAccount.address });
+    await newWallet.registerSender(reconstructedAccount.address, 'ephemeral');
 
     // Check balance
     console.log(`[Test] Checking balance from new wallet...`);
@@ -194,7 +186,7 @@ describe("Token Transfer", () => {
     // BEFORE the transfer happens, so it can track incoming notes
 
     console.log(`[Test] Creating NEW wallet BEFORE transfer...`);
-    const newWallet2 = await TestWallet.create(node, { proverEnabled: false });
+    const newWallet2 = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: false } });
 
     // Generate new ephemeral credentials
     const newSecret = Fr.random();
@@ -206,7 +198,7 @@ describe("Token Transfer", () => {
 
     // Also register this address in the original wallet so we can send to it
     console.log(`[Test] Registering new ephemeral address in original wallet...`);
-    await wallet.registerSender(ephemeralInNewWallet.address);
+    await wallet.registerSender(ephemeralInNewWallet.address, 'ephemeral-new');
 
     // Register token in new wallet
     const tokenInstance = await node.getContract(usdc.address);
@@ -219,12 +211,11 @@ describe("Token Transfer", () => {
     // Now transfer from A to the new ephemeral address
     console.log(`[Test] Transferring 100 USDC from A to new ephemeral...`);
     const SMALL_AMOUNT = 100n * 10n ** 6n;
-    const receipt = await usdc.methods
+    await usdc.methods
       .transfer_private_to_private(addressA, ephemeralInNewWallet.address, SMALL_AMOUNT, 0n)
-      .send({ from: addressA })
-      .wait();
+      .send({ from: addressA });
 
-    console.log(`[Test] Transfer complete in block: ${receipt.blockNumber}`);
+    console.log("[Test] Transfer complete");
 
     // Wait a bit for the new wallet's PXE to process the new block
     console.log(`[Test] Waiting 2 seconds for sync...`);
@@ -237,10 +228,9 @@ describe("Token Transfer", () => {
 
     // IMPORTANT: Register addressA as a sender so PXE knows to look for tags from them
     console.log(`[Test] Registering addressA as sender in new wallet...`);
-    await newWallet2.registerSender(addressA);
+    await newWallet2.registerSender(addressA, 'sender-A');
 
     console.log(`[Test] Sync attempt 1...`);
-    await tokenInNewWallet.methods.sync_private_state().simulate({ from: ephemeralInNewWallet.address });
     let balance = await tokenInNewWallet.methods
       .balance_of_private(ephemeralInNewWallet.address)
       .simulate({ from: ephemeralInNewWallet.address });
@@ -249,7 +239,6 @@ describe("Token Transfer", () => {
     if (balance === 0n) {
       console.log(`[Test] Sync attempt 2 (waiting 2 more seconds)...`);
       await new Promise(resolve => setTimeout(resolve, 2000));
-      await tokenInNewWallet.methods.sync_private_state().simulate({ from: ephemeralInNewWallet.address });
       balance = await tokenInNewWallet.methods
         .balance_of_private(ephemeralInNewWallet.address)
         .simulate({ from: ephemeralInNewWallet.address });
@@ -259,7 +248,6 @@ describe("Token Transfer", () => {
     if (balance === 0n) {
       console.log(`[Test] Sync attempt 3 (waiting 3 more seconds)...`);
       await new Promise(resolve => setTimeout(resolve, 3000));
-      await tokenInNewWallet.methods.sync_private_state().simulate({ from: ephemeralInNewWallet.address });
       balance = await tokenInNewWallet.methods
         .balance_of_private(ephemeralInNewWallet.address)
         .simulate({ from: ephemeralInNewWallet.address });

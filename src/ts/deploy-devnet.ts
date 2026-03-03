@@ -13,12 +13,12 @@
  */
 
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import { TestWallet } from "@aztec/test-wallet/server";
+import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import { Fr } from "@aztec/foundation/curves/bn254";
 import { GrumpkinScalar } from "@aztec/foundation/curves/grumpkin";
-import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
+import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js";
 import { SponsoredFPCContract } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { writeFileSync } from "fs";
 import "dotenv/config";
@@ -45,7 +45,7 @@ async function main() {
     const nodeInfo = await node.getNodeInfo();
     console.log("✅ Connected to devnet");
     console.log(`   Node Version: ${nodeInfo.nodeVersion}`);
-    console.log(`   Chain ID: ${nodeInfo.chainId}`);
+    console.log(`   Chain ID: ${nodeInfo.l1ChainId}`);
   } catch (error: any) {
     console.error("❌ Failed to connect to devnet:", error.message);
     console.log("\n💡 Troubleshooting:");
@@ -57,7 +57,7 @@ async function main() {
   // Create a test wallet (this creates a PXE that connects to the node)
   console.log("\n👤 Creating devnet wallet...");
   console.log("   (Proving is enabled - this will download proving keys on first run)");
-  const wallet = await TestWallet.create(node, { proverEnabled: true });
+  const wallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: true } });
   console.log("✅ Wallet created");
 
   // Register SponsoredFPC
@@ -91,18 +91,20 @@ async function main() {
   console.log("   This may take 2-3 minutes for proving on first run...");
   
   const deployAccountMethod = await accountManager.getDeployMethod();
-  const accountTx = await deployAccountMethod
-    .send({ from: AztecAddress.ZERO, fee: { paymentMethod: sponsoredPaymentMethod } })
-    .wait();
-  
-  console.log(`✅ Account deployed in block ${accountTx.blockNumber}`);
+  await deployAccountMethod
+    .send({ from: AztecAddress.ZERO, fee: { paymentMethod: sponsoredPaymentMethod } });
+
+  console.log("✅ Account deployed");
 
   // Deploy the TokenContract
   console.log("\n📦 Deploying USDC TokenContract...");
   console.log("   This may take 2-3 minutes for proving...");
   
   try {
-    const deployTx = TokenContract.deployWithOpts(
+    console.log("\n⏳ Deploying token contract...");
+    console.log("   Waiting for transaction to be mined...");
+
+    const token = await TokenContract.deployWithOpts(
       { wallet, method: "constructor_with_minter" },
       "USDC",
       "USDC",
@@ -114,14 +116,6 @@ async function main() {
         from: accountAddress,
         fee: { paymentMethod: sponsoredPaymentMethod },
       });
-
-    // Get transaction hash
-    const txHash = await deployTx.getTxHash();
-    console.log(`\n⏳ Deployment transaction sent: ${txHash}`);
-    console.log("   Waiting for transaction to be mined...");
-
-    // Wait for deployment
-    const token = await deployTx.deployed();
     
     console.log("\n" + "=".repeat(60));
     console.log("✅ Token deployed successfully!");
@@ -135,14 +129,13 @@ async function main() {
     console.log("\n🧪 Testing contract - minting 1000 USDC to deployer...");
     const mintAmount = 1000n * 1000000n; // 1000 USDC with 6 decimals
     
-    const mintTx = await token.methods.mint_to_public(accountAddress, mintAmount)
-      .send({ 
-        from: accountAddress, 
-        fee: { paymentMethod: sponsoredPaymentMethod } 
-      })
-      .wait();
-    
-    console.log(`✅ Minted 1000 USDC in block ${mintTx.blockNumber}`);
+    await token.methods.mint_to_public(accountAddress, mintAmount)
+      .send({
+        from: accountAddress,
+        fee: { paymentMethod: sponsoredPaymentMethod }
+      });
+
+    console.log("✅ Minted 1000 USDC");
 
     // Check balance
     const balance = await token.methods.balance_of_public(accountAddress).simulate({ from: accountAddress });
@@ -157,7 +150,7 @@ async function main() {
       deployerSalt: salt.toString(),
       nodeUrl: DEVNET_NODE_URL,
       sponsoredFpcAddress: SPONSORED_FPC_ADDRESS,
-      deploymentBlock: accountTx.blockNumber,
+      deployedAt: new Date().toISOString(),
     };
 
     writeFileSync("deployment.json", JSON.stringify(deployment, null, 2));

@@ -30,3 +30,7 @@ coverage/
 # tmp directory
 tmp
 evm-deployment.json
+
+# Aztec PXE/wallet local data
+pxe_data_*/
+wallet_data_*/

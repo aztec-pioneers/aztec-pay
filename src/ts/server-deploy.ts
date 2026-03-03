@@ -12,12 +12,12 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import { TestWallet } from "@aztec/test-wallet/server";
+import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import { Fr } from "@aztec/foundation/curves/bn254";
 import { GrumpkinScalar } from "@aztec/foundation/curves/grumpkin";
-import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
+import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js";
 import { SponsoredFPCContract } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { AztecToEvmBridge } from "./bridge.js";
 
@@ -33,7 +33,7 @@ const EVM_TOKEN_ADDRESS = process.env.EVM_TOKEN_ADDRESS;
 const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY;
 const EVM_RPC_URL = process.env.EVM_RPC_URL || "https://sepolia.base.org";
 
-let wallet: TestWallet;
+let wallet: EmbeddedWallet;
 let token: TokenContract;
 let minterAddress: AztecAddress;
 let minterSecret: Fr;
@@ -50,7 +50,7 @@ async function deploy() {
   const node = createAztecNodeClient(DEVNET_NODE_URL);
   console.log("✅ Connected to devnet");
   
-  wallet = await TestWallet.create(node, { proverEnabled: true });
+  wallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: true } });
   console.log("✅ Wallet created");
   
   // Register SponsoredFPC
@@ -74,13 +74,12 @@ async function deploy() {
   console.log("⛽ Deploying minter account...");
   const deployAccountMethod = await accountManager.getDeployMethod();
   await deployAccountMethod
-    .send({ from: AztecAddress.ZERO, fee: { paymentMethod: sponsoredPaymentMethod } })
-    .wait();
+    .send({ from: AztecAddress.ZERO, fee: { paymentMethod: sponsoredPaymentMethod } });
   console.log("✅ Account deployed");
   
   // Deploy token
   console.log("📦 Deploying token...");
-  const deployTx = TokenContract.deployWithOpts(
+  token = await TokenContract.deployWithOpts(
     { wallet, method: "constructor_with_minter" },
     "USDC", "USDC", 6,
     minterAddress, minterAddress
@@ -88,8 +87,6 @@ async function deploy() {
     from: minterAddress,
     fee: { paymentMethod: sponsoredPaymentMethod },
   });
-  
-  token = await deployTx.deployed();
   console.log(`✅ Token: ${token.address}`);
   
   // Save deployment
@@ -141,14 +138,13 @@ app.post("/api/faucet", async (req, res) => {
     if (!address) return res.status(400).json({ error: "Address required" });
     
     const recipient = AztecAddress.fromString(address);
-    await wallet.registerSender(recipient);
+    await wallet.registerSender(recipient, 'faucet-recipient');
     
     const sponsoredFpcAddress = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
     const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
     
     await token.methods.mint_to_public(recipient, FAUCET_AMOUNT)
-      .send({ from: minterAddress, fee: { paymentMethod } })
-      .wait();
+      .send({ from: minterAddress, fee: { paymentMethod } });
     
     res.json({ success: true, amount: "1000" });
   } catch (error: any) {

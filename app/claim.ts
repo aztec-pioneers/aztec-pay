@@ -24,7 +24,7 @@ declare global {
 
 import './style.css';
 import { EmbeddedWallet, Fr, AztecAddress } from './embedded-wallet';
-import { TokenContract } from '@defi-wonderland/aztec-standards/artifacts/Token';
+import { TokenContract } from '@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js';
 
 interface PaymentData {
   secret: string;
@@ -278,14 +278,14 @@ async function checkEphemeralBalance(): Promise<bigint> {
     if (paymentData?.senderAddress) {
       console.log('[Claim] Registering SENDER address for note discovery:', paymentData.senderAddress);
       const senderAddr = AztecAddress.fromString(paymentData.senderAddress);
-      await wallet.registerSender(senderAddr);
+      await wallet.registerSender(senderAddr, 'link-sender');
     } else {
       console.warn('[Claim] WARNING: No sender address in link data - note discovery may fail');
     }
 
     // Also register ephemeral address as sender
     console.log('[Claim] Registering ephemeral address as sender...');
-    await wallet.registerSender(ephemeralAddress);
+    await wallet.registerSender(ephemeralAddress, 'ephemeral');
 
     // CRITICAL: Sync PXE to discover the ephemeral account's signing key note
     // This note was created when the account was deployed during link generation
@@ -295,17 +295,6 @@ async function checkEphemeralBalance(): Promise<bigint> {
       console.log('[Claim] PXE sync completed');
     } catch (e) {
       console.warn('[Claim] PXE sync warning:', e);
-    }
-
-    // Also sync token private state
-    console.log('[Claim] Calling sync_private_state...');
-    try {
-      await tokenContract.methods
-        .sync_private_state()
-        .simulate({ from: ephemeralAddress });
-      console.log('[Claim] sync_private_state completed');
-    } catch (syncError) {
-      console.warn('[Claim] sync_private_state warning:', syncError);
     }
 
     // Check private balance
@@ -493,8 +482,8 @@ async function handleClaim() {
     
     // CRITICAL: Register the ephemeral address BEFORE deploying so PXE discovers signing key note
     console.log('[Claim] Registering ephemeral address for note discovery...');
-    await wallet.registerSender(ephemeralAddress);
-    
+    await wallet.registerSender(ephemeralAddress, 'ephemeral-deploy');
+
     if (existingInstance) {
       console.log('[Claim] Account already deployed on-chain, deploying to get signing key in PXE...');
     } else {
@@ -520,7 +509,7 @@ async function handleClaim() {
     console.log('[Claim] Transferring', balance, 'from ephemeral to bridge deposit');
 
     // Register the bridge deposit address so we can send to it
-    await wallet.registerSender(bridgeDepositAddress);
+    await wallet.registerSender(bridgeDepositAddress, 'bridge-deposit');
 
     // Get fee payment method for devnet
     const feePaymentMethod = await wallet.getFeePaymentMethod();
@@ -533,12 +522,10 @@ async function handleClaim() {
 
     // Send private transfer
     try {
-      const tx = tokenContract.methods
+      console.log('[Claim] Sending transaction...');
+      await tokenContract.methods
         .transfer_private_to_private(ephemeralAddress, bridgeDepositAddress, balance, 0n)
         .send(txOptions);
-
-      console.log('[Claim] Transaction sent, waiting for confirmation...');
-      await tx.wait({ timeout: 180 });
       console.log('[Claim] Transfer complete');
     } catch (txError) {
       console.error('[Claim] Transfer error:', txError);

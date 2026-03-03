@@ -3,8 +3,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import type { TestWallet } from "@aztec/test-wallet/server";
-import type { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
+import type { EmbeddedWallet } from "@aztec/wallets/embedded";
+import type { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js";
 import type { PXE } from "@aztec/pxe/server";
 
 // Bridge session tracking
@@ -30,7 +30,7 @@ const BRIDGED_USDC_ABI = parseAbi([
 export class AztecToEvmBridge {
   private sessions: Map<string, BridgeSession> = new Map();
   private processingJobs: Set<string> = new Set(); // Track jobs being processed
-  private wallet: TestWallet;
+  private wallet: EmbeddedWallet;
   private pxe: PXE;
   private token: TokenContract;
   private evmTokenAddress: `0x${string}`;
@@ -39,7 +39,7 @@ export class AztecToEvmBridge {
   private pollInterval: NodeJS.Timeout | null = null;
 
   constructor(
-    wallet: TestWallet,
+    wallet: EmbeddedWallet,
     token: TokenContract,
     evmTokenAddress: string,
     evmPrivateKey: string,
@@ -124,7 +124,7 @@ export class AztecToEvmBridge {
     if (senderAddress) {
       senderAddr = AztecAddress.fromString(senderAddress);
       console.log(`[Bridge] Registering sender ${senderAddress} for note discovery...`);
-      await this.wallet.registerSender(senderAddr);
+      await this.wallet.registerSender(senderAddr, 'bridge-sender');
     } else {
       console.warn(`[Bridge] WARNING: No sender address provided - note discovery may fail!`);
     }
@@ -207,13 +207,6 @@ export class AztecToEvmBridge {
       // Check private balance - ephemeral accounts are created by server's PXE so it should see notes
       try {
         // Sync private state to discover new notes
-        console.log(`[Bridge] Syncing private state for ${aztecAddr.slice(0, 10)}...`);
-        try {
-          await this.token.methods.sync_private_state().simulate({ from: session.aztecAddress });
-        } catch (syncError) {
-          console.warn(`[Bridge] Sync failed:`, syncError);
-        }
-
         console.log(`[Bridge] Checking private balance for ${aztecAddr.slice(0, 10)}...`);
         const balance = await this.checkPrivateBalance(session.aztecAddress);
         console.log(`[Bridge] Private balance: ${balance}`);

@@ -5,17 +5,17 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/Token.js";
+import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js";
 import { setupSandbox, getTestWallet, deployToken, mintTokensPublic } from "./utils.js";
 import { AztecToEvmBridge } from "./bridge.js";
-import { 
-  AZTEC_NODE_URL, 
-  IS_DEVNET, 
-  IS_LOCALNET, 
+import {
+  AZTEC_NODE_URL,
+  IS_DEVNET,
+  IS_LOCALNET,
   SPONSORED_FPC_ADDRESS,
-  logConfig 
+  logConfig
 } from "./config.js";
-import type { TestWallet } from "@aztec/test-wallet/server";
+import type { EmbeddedWallet } from "@aztec/wallets/embedded";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,7 +79,7 @@ const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY;
 const EVM_RPC_URL = process.env.EVM_RPC_URL || "https://sepolia.base.org";
 const TOKEN_ADDRESS = getAztecTokenAddress();
 
-let wallet: TestWallet;
+let wallet: EmbeddedWallet;
 let token: TokenContract;
 let minterAddress: AztecAddress;
 let bridge: AztecToEvmBridge | null = null;
@@ -140,8 +140,7 @@ async function initialize() {
             
             const deployMethod = await minterAccount.getDeployMethod();
             await deployMethod
-              .send({ from: AztecAddress.ZERO, fee: { paymentMethod } })
-              .wait();
+              .send({ from: AztecAddress.ZERO, fee: { paymentMethod } });
             console.log("[Server] Minter account deployed");
           } catch (deployError: any) {
             // Account might already be deployed
@@ -219,7 +218,7 @@ app.post("/api/faucet", async (req, res) => {
 
     // Register the recipient so the server's PXE can send to them
     console.log(`[Faucet] Registering recipient ${address}...`);
-    await wallet.registerSender(recipient);
+    await wallet.registerSender(recipient, 'faucet-recipient');
 
     // Use public mint for both localnet and devnet
     console.log(`[Faucet] Minting 1000 USDC (PUBLIC) to ${address}...`);
