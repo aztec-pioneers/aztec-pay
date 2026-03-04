@@ -6,7 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { TokenContract } from "@defi-wonderland/aztec-standards/artifacts/src/artifacts/Token.js";
-import { setupSandbox, getTestWallet, deployToken, mintTokensPublic } from "./utils.js";
+import { setupSandbox, getTestWallet, deployToken, deployAccount, mintTokensPublic } from "./utils.js";
 import { AztecToEvmBridge } from "./bridge.js";
 import {
   AZTEC_NODE_URL,
@@ -275,8 +275,20 @@ async function initialize() {
       console.warn("[Server] Please run: yarn deploy:devnet:server");
     }
   } else {
-    // Localnet: deploy new token
+    // Localnet: deploy minter account with FPC, then deploy token
     minterAddress = result.accounts[0];
+
+    console.log("[Server] Deploying minter account with SponsoredFPC...");
+    try {
+      await deployAccount(result.accountManagers[0]);
+    } catch (deployError: any) {
+      if (deployError.message?.includes("already deployed") || deployError.message?.includes("nullifier")) {
+        console.log("[Server] Minter account already deployed");
+      } else {
+        throw deployError;
+      }
+    }
+
     console.log("[Server] Deploying new USDC token...");
     token = await deployToken(wallet, minterAddress, "USDC", "USDC", 6);
 
