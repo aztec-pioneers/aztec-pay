@@ -15,7 +15,14 @@ import type { ContractArtifact } from '@aztec/stdlib/abi';
 // Environment detection
 const AZTEC_ENV = process.env.AZTEC_ENV || 'localnet';
 const IS_DEVNET = AZTEC_ENV === 'devnet';
-const SPONSORED_FPC_ADDRESS = process.env.SPONSORED_FPC_ADDRESS || '0x1586f476995be97f07ebd415340a14be48dc28c6c661cc6bdddb80ae790caa4e';
+
+// Default FPC addresses per environment
+// On localnet: don't hardcode FPC — the sandbox may or may not have it deployed
+// On devnet: use env var or fallback to known devnet FPC
+const DEFAULT_DEVNET_FPC = '0x1586f476995be97f07ebd415340a14be48dc28c6c661cc6bdddb80ae790caa4e';
+const SPONSORED_FPC_ADDRESS = IS_DEVNET
+  ? (process.env.SPONSORED_FPC_ADDRESS || DEFAULT_DEVNET_FPC)
+  : null; // On localnet, FPC address comes from server health endpoint if available
 
 // Sandbox pre-funded test account (first account — already deployed with fee juice on localnet)
 const TEST_ACCOUNT_SECRET = '0x2153536ff6628eee01cf4024889ff977a18d9fa61d0e414422f7681cf085c281';
@@ -74,18 +81,20 @@ export class EmbeddedWallet {
 
     const embeddedWallet = new EmbeddedWallet(node, wallet);
 
-    // Register SponsoredFPC on devnet
-    if (IS_DEVNET) {
-      await embeddedWallet.registerSponsoredFPC();
-    }
+    // Register SponsoredFPC for fee payment (both localnet and devnet)
+    await embeddedWallet.registerSponsoredFPC();
 
     return embeddedWallet;
   }
 
   /**
-   * Register the SponsoredFPC contract for devnet fee payment
+   * Register the SponsoredFPC contract for fee payment
    */
   private async registerSponsoredFPC(): Promise<void> {
+    if (!SPONSORED_FPC_ADDRESS) {
+      console.log('[EmbeddedWallet] No SponsoredFPC address configured - skipping registration');
+      return;
+    }
     try {
       const { SponsoredFPCContract } = await import('@aztec/noir-contracts.js/SponsoredFPC');
       const address = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
@@ -226,7 +235,7 @@ export class EmbeddedWallet {
    * @param salt The salt for deterministic address generation
    * @param deploy Whether to deploy the account (needed for devnet)
    */
-  async createSchnorrAccount(secret: Fr, salt: Fr, deploy: boolean = false): Promise<AccountInfo> {
+  async createSchnorrAccount(secret: Fr, salt: Fr, deploy: boolean = false, fpcAddress?: string | null): Promise<AccountInfo> {
     const cacheKey = `${secret.toString()}:${salt.toString()}`;
 
     // Check cache but don't return early if we need to deploy
@@ -255,15 +264,16 @@ export class EmbeddedWallet {
 
       const deployMethod = await account.getDeployMethod();
 
+      // Determine fee payment: use SponsoredFPC if explicitly provided
+      // If fpcAddress is undefined, use default; if null, skip fee payment
+      const effectiveFpcAddress = fpcAddress !== undefined ? fpcAddress : SPONSORED_FPC_ADDRESS;
+
       try {
-        if (IS_DEVNET) {
-          // Devnet: use sponsored fees
+        if (effectiveFpcAddress) {
           const { SponsoredFeePaymentMethod } = await import('@aztec/aztec.js/fee');
-          const sponsoredFpcAddress = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
-          const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFpcAddress);
+          const paymentMethod = new SponsoredFeePaymentMethod(AztecAddress.fromString(effectiveFpcAddress));
           await deployMethod.send({ from: AztecAddress.ZERO, fee: { paymentMethod } });
         } else {
-          // Localnet: no fees needed
           await deployMethod.send({ from: AztecAddress.ZERO });
         }
         console.log('[EmbeddedWallet] Account deployed successfully');
@@ -393,7 +403,7 @@ export class EmbeddedWallet {
    * Get the fee payment method for devnet transactions
    */
   async getFeePaymentMethod(): Promise<any> {
-    if (!IS_DEVNET) {
+    if (!SPONSORED_FPC_ADDRESS) {
       return undefined;
     }
 

@@ -48,7 +48,14 @@
       "Bash(node:*)",
       "Bash(AZTEC_ENV=localnet npm run:*)",
       "Bash(AZTEC_ENV=localnet AZTEC_NODE_URL=http://localhost:8080 npm run:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebFetch(domain:docs.aztec.network)",
+      "Bash(gh api:*)",
+      "Bash(npx aztec:*)",
+      "Bash(npx tsx:*)",
+      "Bash(AZTEC_ENV=localnet AZTEC_NODE_URL=http://localhost:8080 API_BASE_URL= npm run:*)",
+      "Bash(cat:*)",
+      "Bash(AZTEC_ENV=localnet AZTEC_NODE_URL=http://localhost:8080 API_BASE_URL= npx tsx:*)"
     ]
   }
 }

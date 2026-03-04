@@ -81,6 +81,7 @@ let wallet: EmbeddedWallet | null = null;
 let tokenContract: typeof TokenContract.prototype | null = null;
 let ephemeralAddress: AztecAddress | null = null;
 let evmTokenAddress: string | null = null;
+let sponsoredFpcAddress: string | null = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', initialize);
@@ -138,8 +139,9 @@ async function initialize() {
       return;
     }
 
-    // Store EVM token address for wallet integration
+    // Store EVM token address and FPC address
     evmTokenAddress = health.evmTokenAddress;
+    sponsoredFpcAddress = health.sponsoredFpcAddress;
 
     // Update manual details with token address
     if (evmTokenAddress) {
@@ -232,7 +234,7 @@ async function initialize() {
   }
 }
 
-async function checkServerHealth(): Promise<{ bridgeEnabled: boolean; evmTokenAddress: string; serverStartupTimestamp: number } | null> {
+async function checkServerHealth(): Promise<{ bridgeEnabled: boolean; evmTokenAddress: string; serverStartupTimestamp: number; sponsoredFpcAddress: string | null } | null> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/health`);
     const data = await response.json();
@@ -242,6 +244,7 @@ async function checkServerHealth(): Promise<{ bridgeEnabled: boolean; evmTokenAd
         bridgeEnabled: data.bridgeEnabled,
         evmTokenAddress: data.evmTokenAddress,
         serverStartupTimestamp: data.serverStartupTimestamp,
+        sponsoredFpcAddress: data.sponsoredFpcAddress || null,
       };
     }
     return null;
@@ -485,13 +488,24 @@ async function handleClaim() {
     await wallet.registerSender(ephemeralAddress, 'ephemeral-deploy');
 
     if (existingInstance) {
-      console.log('[Claim] Account already deployed on-chain, deploying to get signing key in PXE...');
+      console.log('[Claim] Account already deployed on-chain, registering in PXE...');
     } else {
-      console.log('[Claim] Account not yet deployed, will deploy fresh...');
+      console.log('[Claim] Account not yet deployed, will deploy with sponsored fees...');
     }
-    
-    // Create/deploy the account - this creates/gets the signing key note in claimer's PXE
-    const ephemeralAccount = await wallet.createSchnorrAccount(secret, salt, true);
+
+    // Register SponsoredFPC so the ephemeral account can use it for fees
+    if (sponsoredFpcAddress) {
+      console.log('[Claim] Registering SponsoredFPC at:', sponsoredFpcAddress);
+      const { SponsoredFPCContract } = await import('@aztec/noir-contracts.js/SponsoredFPC');
+      const fpcAddr = AztecAddress.fromString(sponsoredFpcAddress);
+      const fpcInstance = await wallet.getContractInstanceFromNode(fpcAddr);
+      if (fpcInstance) {
+        await wallet.registerContract(fpcInstance, SponsoredFPCContract.artifact);
+      }
+    }
+
+    // Create/deploy the account using sponsored fees
+    const ephemeralAccount = await wallet.createSchnorrAccount(secret, salt, true, sponsoredFpcAddress);
     console.log('[Claim] Account ready at:', ephemeralAccount.address.toString());
     
     // CRITICAL: Wait and sync multiple times to ensure signing key note is discovered
@@ -511,8 +525,12 @@ async function handleClaim() {
     // Register the bridge deposit address so we can send to it
     await wallet.registerSender(bridgeDepositAddress, 'bridge-deposit');
 
-    // Get fee payment method for devnet
-    const feePaymentMethod = await wallet.getFeePaymentMethod();
+    // Get fee payment method (works on both localnet and devnet if FPC is available)
+    let feePaymentMethod: any = undefined;
+    if (sponsoredFpcAddress) {
+      const { SponsoredFeePaymentMethod } = await import('@aztec/aztec.js/fee');
+      feePaymentMethod = new SponsoredFeePaymentMethod(AztecAddress.fromString(sponsoredFpcAddress));
+    }
 
     // Transfer private notes to bridge
     const txOptions: any = { from: ephemeralAddress };

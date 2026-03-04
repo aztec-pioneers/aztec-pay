@@ -10,19 +10,25 @@ export const AZTEC_ENV = process.env.AZTEC_ENV || 'localnet';
 export const IS_DEVNET = AZTEC_ENV === 'devnet';
 export const IS_LOCALNET = AZTEC_ENV === 'localnet';
 
+// Canonical SponsoredFPC address (deployed at genesis with salt=0, same for all sandbox instances)
+const CANONICAL_SPONSORED_FPC_ADDRESS = '0x09a4df73aa47f82531a038d1d51abfc85b27665c4b7ca751e2d4fa9f19caffb2';
+
+// Default FPC addresses per environment
+const DEFAULT_DEVNET_FPC = '0x1586f476995be97f07ebd415340a14be48dc28c6c661cc6bdddb80ae790caa4e';
+
 // Network-specific constants
 export const NETWORKS = {
   localnet: {
     name: 'localnet',
     nodeUrl: process.env.AZTEC_NODE_URL || 'http://localhost:8080',
-    sponsoredFpcAddress: undefined, // Localnet doesn't use sponsored FPC (fees are free)
+    sponsoredFpcAddress: CANONICAL_SPONSORED_FPC_ADDRESS,
     proverEnabled: false,
     apiBaseUrl: process.env.API_BASE_URL || '',
   },
   devnet: {
     name: 'devnet',
     nodeUrl: process.env.AZTEC_NODE_URL || 'https://devnet-6.aztec-labs.com',
-    sponsoredFpcAddress: process.env.SPONSORED_FPC_ADDRESS || '0x1586f476995be97f07ebd415340a14be48dc28c6c661cc6bdddb80ae790caa4e',
+    sponsoredFpcAddress: process.env.SPONSORED_FPC_ADDRESS || DEFAULT_DEVNET_FPC,
     proverEnabled: true, // Devnet requires proving
     apiBaseUrl: process.env.API_BASE_URL || '',
   },
@@ -48,7 +54,7 @@ export function logConfig(): void {
   console.log(`Network: ${NETWORK.name}`);
   console.log(`Node URL: ${AZTEC_NODE_URL}`);
   console.log(`Prover Enabled: ${PROVER_ENABLED}`);
-  if (IS_DEVNET && SPONSORED_FPC_ADDRESS) {
+  if (SPONSORED_FPC_ADDRESS) {
     console.log(`Sponsored FPC: ${SPONSORED_FPC_ADDRESS}`);
   }
   console.log('='.repeat(60));
@@ -60,7 +66,7 @@ export function logConfig(): void {
  * On devnet, returns sponsored fee payment method
  */
 export async function getFeePaymentMethod(): Promise<any> {
-  if (IS_LOCALNET || !SPONSORED_FPC_ADDRESS) {
+  if (!SPONSORED_FPC_ADDRESS) {
     return undefined;
   }
   

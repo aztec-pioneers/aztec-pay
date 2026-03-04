@@ -16,9 +16,14 @@ import {
   logConfig
 } from "./config.js";
 import type { EmbeddedWallet } from "@aztec/wallets/embedded";
+import type { AztecNode } from "@aztec/aztec.js/node";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Anvil (local L1) config for fee juice bridging
+const ANVIL_RPC_URL = process.env.ANVIL_RPC_URL || 'http://localhost:8545';
+const ANVIL_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const FAUCET_AMOUNT = 1000n * 1000000n; // 1000 USDC with 6 decimals
@@ -82,8 +87,78 @@ const TOKEN_ADDRESS = getAztecTokenAddress();
 let wallet: EmbeddedWallet;
 let token: TokenContract;
 let minterAddress: AztecAddress;
+let sponsoredFpcAddress: string | null = null;
 let bridge: AztecToEvmBridge | null = null;
 let isInitialized = false;
+
+/**
+ * Fund the canonical SponsoredFPC with fee juice by bridging from L1 (Anvil).
+ * The FPC is pre-deployed on the sandbox but needs fee juice to sponsor txs.
+ */
+async function fundFPCWithFeeJuice(
+  node: AztecNode,
+  fpcAddress: AztecAddress,
+  feePayerAddress: AztecAddress
+): Promise<void> {
+  const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
+  const feeJuice = FeeJuiceContract.at(wallet);
+
+  // Check if FPC already has fee juice
+  const balance = await feeJuice.methods.balance_of_public(fpcAddress).simulate({ from: feePayerAddress });
+  if (balance > 0n) {
+    console.log(`[Server] SponsoredFPC already has ${balance} fee juice, skipping funding`);
+    return;
+  }
+
+  console.log('[Server] SponsoredFPC has no fee juice, bridging from L1...');
+  const { createExtendedL1Client } = await import('@aztec/ethereum/client');
+  const { L1FeeJuicePortalManager } = await import('@aztec/aztec.js/ethereum');
+  const { createLogger } = await import('@aztec/foundation/log');
+  const { foundry } = await import('viem/chains');
+
+  // Create L1 client with Anvil's default funded account
+  const l1Client = createExtendedL1Client([ANVIL_RPC_URL], ANVIL_PRIVATE_KEY, foundry);
+  const logger = createLogger('fee-juice-funding');
+  const portalManager = await L1FeeJuicePortalManager.new(node, l1Client, logger);
+
+  // Bridge fee juice to the FPC (mint=true uses the faucet handler on L1)
+  // The faucet handler requires exactly 1000 * 10^18 per mint
+  const FUND_AMOUNT = 1000n * 10n ** 18n;
+  console.log(`[Server] Bridging ${FUND_AMOUNT} fee juice from L1 to FPC...`);
+  const claim = await portalManager.bridgeTokensPublic(fpcAddress, FUND_AMOUNT, true);
+  console.log(`[Server] Fee juice deposited on L1 (messageLeafIndex: ${claim.messageLeafIndex})`);
+
+  // Wait for the L1→L2 message to be included by the sequencer, then claim on L2
+  const MAX_RETRIES = 30;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log(`[Server] Claiming fee juice on L2 (attempt ${attempt}/${MAX_RETRIES})...`);
+      await feeJuice.methods.claim(
+        fpcAddress,
+        claim.claimAmount,
+        claim.claimSecret,
+        claim.messageLeafIndex
+      ).send({ from: feePayerAddress });
+
+      console.log('[Server] SponsoredFPC funded with fee juice successfully!');
+      return;
+    } catch (error: any) {
+      const msg = error?.message || '';
+      // Message not yet available in L2 inbox — wait and retry
+      if (msg.includes('Message not in state') || msg.includes('not found') || msg.includes('leaf') || msg.includes('nothing to prove')) {
+        if (attempt < MAX_RETRIES) {
+          console.log(`[Server] L1→L2 message not yet available, waiting... (attempt ${attempt})`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+
+  throw new Error('Failed to claim fee juice after max retries');
+}
 
 async function initialize() {
   // Log configuration
@@ -96,7 +171,41 @@ async function initialize() {
   const result = await getTestWallet(node);
   wallet = result.wallet;
 
-  // For devnet, use existing deployed token and minter account
+  // Setup SponsoredFPC for fee payment
+  if (IS_LOCALNET) {
+    // Localnet: the canonical SponsoredFPC is pre-deployed on the sandbox.
+    // Just verify it exists and fund it with fee juice so it can sponsor txs.
+    const fpcAddr = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
+    const fpcInstance = await node.getContract(fpcAddr);
+    if (fpcInstance) {
+      sponsoredFpcAddress = SPONSORED_FPC_ADDRESS;
+      console.log(`[Server] Canonical SponsoredFPC found at ${sponsoredFpcAddress}`);
+
+      // Check if it has fee juice, fund if needed
+      try {
+        const feePayerAddress = result.accounts[0];
+        await fundFPCWithFeeJuice(node, fpcAddr, feePayerAddress);
+      } catch (error) {
+        console.error('[Server] Failed to fund SponsoredFPC:', error);
+        console.warn('[Server] FPC exists but may not have fee juice - claim flow may fail');
+      }
+    } else {
+      console.warn(`[Server] Canonical SponsoredFPC NOT found at ${SPONSORED_FPC_ADDRESS}`);
+      console.warn('[Server] Claim flow will not work without a SponsoredFPC');
+    }
+  } else if (SPONSORED_FPC_ADDRESS) {
+    // Devnet: verify existing FPC exists on-chain
+    const fpcAddr = AztecAddress.fromString(SPONSORED_FPC_ADDRESS);
+    const fpcInstance = await node.getContract(fpcAddr);
+    if (fpcInstance) {
+      sponsoredFpcAddress = SPONSORED_FPC_ADDRESS;
+      console.log(`[Server] SponsoredFPC verified at ${sponsoredFpcAddress}`);
+    } else {
+      sponsoredFpcAddress = null;
+      console.log(`[Server] SponsoredFPC NOT found at ${SPONSORED_FPC_ADDRESS} - transactions will be sent without fee payment`);
+    }
+  }
+
   if (IS_DEVNET && TOKEN_ADDRESS) {
     console.log(`[Server] Using existing token from deployment.json: ${TOKEN_ADDRESS}`);
     token = await TokenContract.at(AztecAddress.fromString(TOKEN_ADDRESS), wallet);
@@ -170,12 +279,13 @@ async function initialize() {
     minterAddress = result.accounts[0];
     console.log("[Server] Deploying new USDC token...");
     token = await deployToken(wallet, minterAddress, "USDC", "USDC", 6);
-    
+
     // Save deployment info for localnet
     const deployment = {
       environment: 'localnet',
       tokenAddress: token.address.toString(),
       minterAddress: minterAddress.toString(),
+      sponsoredFpcAddress,
     };
     fs.writeFileSync("deployment.json", JSON.stringify(deployment, null, 2));
     console.log("[Server] Deployment saved to deployment.json");
@@ -359,6 +469,7 @@ app.get("/api/health", (_req, res) => {
     tokenAddress: isInitialized ? token.address.toString() : null,
     bridgeEnabled: !!bridge,
     evmTokenAddress: EVM_TOKEN_ADDRESS || null,
+    sponsoredFpcAddress,
     activeBridgeSessions: bridge?.getActiveSessionsCount() || 0,
     serverStartupTimestamp: SERVER_STARTUP_TIMESTAMP,
     environment: IS_DEVNET ? 'devnet' : 'localnet',
